@@ -1,0 +1,12 @@
+{
+  "name": "valtoria-experiment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "cd game && python3 -m http.server 8000",
+    "build:pc": "node tools/build-pc.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  }
+}
