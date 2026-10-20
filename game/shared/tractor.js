@@ -15,6 +15,7 @@
 //
 //   const t = buildTractor(THREE);   scene.add(t.group);
 //   t.update(dt, { running, throttle, speed })   each frame (wheels, antenna, exhaust)
+//   t.sulphur(sec)                                Sulphur-Salts in the intake: yellow out of the stack
 //   t.setLid(open)   t.milk.visible   t.load.visible
 // ============================================================
 
@@ -283,11 +284,17 @@ export function buildTractor(THREE, { maxAniso = 8 } = {}) {
   const smokeGeo = new THREE.BufferGeometry(); smokeGeo.setAttribute('position', new THREE.BufferAttribute(sm.pos, 3));
   const smoke = new THREE.Points(smokeGeo, new THREE.PointsMaterial({ map: dot, color: 0xd8d4c8, size: 0.9, transparent: true, opacity: 0.32, depthWrite: false }));
   smoke.frustumCulled = false;
+  // Sulphur-Salts in the intake: a thick yellow-white cloud out of the stack, for a few seconds
+  const YN = 90, ys = { pos: new Float32Array(YN * 3), vel: new Float32Array(YN * 3), life: new Float32Array(YN), i: 0 };
+  const yGeo = new THREE.BufferGeometry(); yGeo.setAttribute('position', new THREE.BufferAttribute(ys.pos, 3));
+  const yellow = new THREE.Points(yGeo, new THREE.PointsMaterial({ map: dot, color: 0xf2e6a0, size: 2.2, transparent: true, opacity: 0.55, depthWrite: false }));
+  yellow.frustumCulled = false;
+  for (let k = 0; k < YN; k++) ys.pos[k * 3 + 1] = -999;
   for (let k = 0; k < N; k++) sp.pos[k * 3 + 1] = -999;
   for (let k = 0; k < SN; k++) sm.pos[k * 3 + 1] = -999;
   const glow = new THREE.PointLight(0xe8ffd8, 0, 6, 2); glow.position.copy(stackTip); group.add(glow);
   const tipW = new THREE.Vector3();
-  let spit = 0, attached = false, swayV = 0, sway = 0, lastSpeed = 0, lidOpen = 0, lidWant = 0;
+  let spit = 0, sulph = 0, attached = false, swayV = 0, sway = 0, lastSpeed = 0, lidOpen = 0, lidWant = 0;
 
   const t = {
     group, wheels, milk, load, canister, antenna, stackTip, lid, materials: M,
@@ -295,8 +302,10 @@ export function buildTractor(THREE, { maxAniso = 8 } = {}) {
     setLid(open) { lidWant = open ? 1 : 0; },
     // a burst from the stack: on start, and when the throttle opens
     spit(n = 24) { spit += n; },
+    // Sulphur-Salts: the stack chokes out yellow for a few seconds
+    sulphur(sec = 4) { sulph = sec; spit += 60; },
     update(dt, { running = t.running, throttle = 0, speed = 0 } = {}) {
-      if (!attached && group.parent) { group.parent.add(sparks, smoke); attached = true; }
+      if (!attached && group.parent) { group.parent.add(sparks, smoke, yellow); attached = true; }
       for (const w of wheels) w.g.rotation.x += speed * dt / w.r;
       // the whip sways with the ground and with every change of speed
       const accel = (speed - lastSpeed) / Math.max(dt, 1e-3); lastSpeed = speed;
@@ -323,6 +332,15 @@ export function buildTractor(THREE, { maxAniso = 8 } = {}) {
         for (let a = 0; a < 3; a++) sp.pos[k * 3 + a] += sp.vel[k * 3 + a] * dt;
       }
       for (let j = 0; j < SN; j++) { if (sm.life[j] <= 0) { sm.pos[j * 3 + 1] = -999; continue; } sm.life[j] -= dt; sm.pos[j * 3 + 1] += dt * 1.1; sm.pos[j * 3] += dt * 0.5; }
+      if (sulph > 0) {
+        sulph -= dt;
+        for (let n = Math.ceil(dt * 40); n > 0; n--) { const k = ys.i = (ys.i + 1) % YN; ys.pos.set([tipW.x, tipW.y + 0.2, tipW.z], k * 3); ys.vel.set([(Math.random() - 0.5) * 3, 2.5 + Math.random() * 2, (Math.random() - 0.5) * 3], k * 3); ys.life[k] = 4 + Math.random() * 2; }
+      }
+      for (let k = 0; k < YN; k++) {
+        if (ys.life[k] <= 0) { ys.pos[k * 3 + 1] = -999; continue; }
+        ys.life[k] -= dt; for (let a = 0; a < 3; a++) { ys.pos[k * 3 + a] += ys.vel[k * 3 + a] * dt; ys.vel[k * 3 + a] *= 1 - dt * 0.6; }
+      }
+      yGeo.attributes.position.needsUpdate = true;
       sparkGeo.attributes.position.needsUpdate = true; smokeGeo.attributes.position.needsUpdate = true;
       glow.intensity = running ? 0.6 + throttle * 1.6 + (Math.random() < 0.1 ? 1.5 : 0) : 0;
     },

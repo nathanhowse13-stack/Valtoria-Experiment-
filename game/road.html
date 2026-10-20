@@ -38,6 +38,8 @@ body:not(.workshop) .ws { display: none !important; }
 #fx-haze { background: radial-gradient(ellipse at 50% 60%, rgba(150, 210, 90, 0.18), rgba(230, 190, 40, 0.32)); mix-blend-mode: screen; }
 #fx-swirl { background: conic-gradient(from 0deg, rgba(160, 200, 130, 0), rgba(160, 200, 130, 0.14), rgba(160, 200, 130, 0), rgba(160, 200, 130, 0.14), rgba(160, 200, 130, 0)); mix-blend-mode: screen; animation: swirl 3s linear infinite; }
 @keyframes swirl { to { transform: rotate(1turn) scale(1.6); } }
+#fx-dark { z-index: 5; background: #000; }
+#fx-glare { z-index: 5; background: radial-gradient(ellipse at 50% 45%, #fffdf6, #fff1d4 60%, #ffe2b0); }
 #fx-fade { z-index: 20; background: #fff3d9; transition: opacity 1.4s; display: grid; place-items: center; }
 #fx-fade.on { opacity: 1; }
 #fx-fade p { margin: 0; font: italic 24px/1.3 var(--book); color: #2b1d15; max-width: 30rem; text-align: center; padding: 0 20px; }
@@ -69,6 +71,14 @@ body:not(.workshop) .ws { display: none !important; }
 #m-health i { background: #d65a40; } #m-water i { background: var(--water); } #m-stress i { background: var(--stress); }
 #status { margin-top: 6px; color: var(--ink-dim); min-height: 1.3em; }
 #status .bad { color: #ff9c85; }
+#gauges { position: absolute; right: 18px; top: 86px; width: 218px; padding: 8px 12px; display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 11.5px; color: var(--ink-dim); }
+#gauges[hidden] { display: none; }
+#gauges .gk { grid-column: 1 / -1; font: 600 10.5px/1.6 var(--ui); letter-spacing: 0.2em; text-transform: uppercase; color: var(--rust); }
+#gauges b { font-weight: 600; color: var(--ink); text-align: right; white-space: nowrap; } #gauges b.warn { color: var(--dawn); } #gauges b.bad { color: #ff9c85; }
+#gauges .dial { display: inline-block; width: 11px; height: 11px; border: 1px solid var(--ink-dim); border-radius: 50%; position: relative; vertical-align: -1px; animation: dial 0.7s linear infinite; }
+#gauges .dial::after { content: ""; position: absolute; left: 5px; top: 1px; width: 1px; height: 5px; background: var(--dawn); }
+@keyframes dial { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { #gauges .dial { animation-duration: 6s; } }
 #mode { position: absolute; left: 18px; bottom: 16px; padding: 8px 12px; font-size: 12.5px; color: var(--ink-dim); max-width: min(560px, 60vw); }
 #mode b { color: var(--dawn); font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; font-size: 11.5px; margin-right: 8px; }
 #reticle { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: rgba(255, 245, 230, 0.6); transition: transform 0.15s; }
@@ -80,6 +90,9 @@ body:not(.workshop) .ws { display: none !important; }
 #thought .tagline, #whisper .tagline { display: block; margin-top: 4px; font: 12px var(--ui); color: var(--ink-faint); text-shadow: none; }
 #whisper { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); width: min(30rem, 86vw); text-align: center; font: italic 19px/1.4 var(--book); color: rgba(226, 214, 238, 0.88); text-shadow: 0 0 10px rgba(150, 120, 200, 0.7); opacity: 0; transition: opacity 0.6s; }
 #whisper.on { opacity: 1; }
+#book { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); width: min(34rem, 86vw); padding: 14px 20px; text-align: center; background: rgba(24, 16, 10, 0.82); border: 1px solid var(--line); border-radius: 6px; opacity: 0; transition: opacity 0.8s; }
+#book.on { opacity: 1; }
+#book p { margin: 0 0 6px; font: italic 19px/1.45 var(--book); color: #f6ead4; }
 #toasts { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); display: grid; gap: 6px; width: min(26rem, 90vw); }
 .toast { margin: 0; padding: 7px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--dawn); border-radius: 4px; font-size: 13.5px; transition: opacity 0.5s; }
 .toast.out { opacity: 0; }
@@ -109,6 +122,7 @@ body:not(.workshop) .ws { display: none !important; }
 .row .hd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row p { margin: 4px 0 0; color: var(--ink-dim); font-size: 14px; }
 .row.missing { color: var(--ink-faint); }
+.row p.quote { font: italic 15px/1.45 var(--book); color: var(--ink); }
 .idea { display: grid; grid-template-columns: 112px 1fr auto; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .idea img { width: 112px; height: 63px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); background: #000; }
 .idea .t { white-space: pre-wrap; } .idea .m { font-size: 12px; color: var(--ink-faint); margin-top: 4px; }
@@ -125,11 +139,12 @@ body:not(.workshop) .ws { display: none !important; }
 .chip[aria-pressed="true"] { background: rgba(208, 100, 47, 0.22); border-color: var(--rust); color: #fff1e2; }
 .jot-row { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 12px; }
 .jot-row .grow { flex: 1; font-size: 12.5px; color: var(--ink-faint); }
-@media (max-width: 860px) { #journey { width: 230px; } #compass { top: 110px; width: 80vw; } #compass-note { top: 148px; } #vitals { width: 180px; } }
+@media (max-width: 860px) { #journey { width: 230px; } #vitals { width: 180px; } }
+@media (max-width: 720px) { #compass { top: 128px; width: 80vw; } #compass-note { top: 166px; } #gauges { top: 172px; } }
 </style>
 </head><body>
 <canvas id="scene" tabindex="0" aria-label="The Red Waste, on the road to Bleak Flats"></canvas>
-<div class="fx" id="fx-goggles"></div><div class="fx" id="fx-haze"></div><div class="fx" id="fx-swirl"></div><div class="fx" id="fx-stress"></div><div class="fx" id="fx-bleed"></div><div class="fx" id="fx-hurt"></div>
+<div class="fx" id="fx-goggles"></div><div class="fx" id="fx-dark"></div><div class="fx" id="fx-glare"></div><div class="fx" id="fx-haze"></div><div class="fx" id="fx-swirl"></div><div class="fx" id="fx-stress"></div><div class="fx" id="fx-bleed"></div><div class="fx" id="fx-hurt"></div>
 
 <div id="hud" hidden>
   <div id="journey" class="panel"><div class="kicker">To Bleak Flats</div><div class="place" id="place">The north gate</div><div id="track"><i id="track-fill"></i></div><div class="km" id="km">20.0 km to go</div></div>
@@ -139,9 +154,11 @@ body:not(.workshop) .ws { display: none !important; }
   <div id="reticle"></div>
   <div id="prompt" class="panel" hidden><kbd>E</kbd><span class="verb" id="prompt-verb"></span><span class="name" id="prompt-name"></span><span class="ws" id="prompt-tag"></span></div>
   <div id="whisper"></div>
+  <div id="book" aria-live="polite"></div>
   <div id="thought"></div>
   <div id="toasts"></div>
   <div id="mode" class="panel"></div>
+  <div id="gauges" class="panel" hidden></div>
   <div id="vitals" class="panel">
     <div class="meter" id="m-health"><span>Health</span><span class="bar"><i></i></span><span class="n">100</span></div>
     <div class="meter" id="m-water"><span>Water</span><span class="bar"><i></i></span><span class="n">100</span></div>
@@ -152,17 +169,17 @@ body:not(.workshop) .ws { display: none !important; }
 
 <div id="title" class="screen">
   <div class="card">
-    <div class="kicker">Valtoria · Chapter One</div>
-    <h1>The Road to Bleak Flats</h1>
-    <p class="lede">Twenty clicks of the Red Waste, and Jacob has driven every one of them more times than he’d like. The road is not the only thing out here that moves.</p>
-    <p>Five minutes by tractor if you never stop. The Waste will give you reasons to. Climb down to look at ruins, caves, the old pipeline and the power line, but learn what lives here first: the Field Guide’s plants and beasts each want something different from you.</p>
+    <div class="kicker">Valtoria · Chapter Two</div>
+    <h1>The Gauntlet of the Red Waste</h1>
+    <p class="lede">Twenty clicks to Bleak Flats, and Jacob has driven every one of them more times than he’d like. The road is not the only thing out here that moves.</p>
+    <p>At the fork, take the Old Canyon Road through the gums and the spinifex, or run straight across the salt pans where the striders hunt. Climb down to look round ruins, an old strip mine and three shallow caves, each with something left in it. Learn what lives here first: everything out here wants something different from you.</p>
     <dl>
-      <dt>Driving</dt><dd>W/S throttle and brake, A/D steer, mouse looks around, F drink from the canister, R the radio, V seat or chase view, E climb down.</dd>
-      <dt>On foot</dt><dd>WASD walk, Shift run, E use or climb aboard, F drink from the water bag.</dd>
+      <dt>Driving</dt><dd>W/S throttle and brake, A/D steer, mouse looks around, F drink from the canister, G Sulphur-Salts into the intake, R the radio, V seat or chase view, E climb down.</dd>
+      <dt>On foot</dt><dd>WASD walk, Shift run, E use or climb aboard, F drink from the water bag. Walk into a cave mouth to go in, and back out into the light to leave.</dd>
       <dt>Always</dt><dd>C compass, Tab the notebook, N jot an idea, Esc pause.</dd>
     </dl>
     <div class="actions"><button class="btn primary" id="btn-start" disabled>Loading the Waste…</button><button class="btn" id="btn-yard">Back to the yard</button><button class="btn" id="btn-ws" aria-pressed="false">Workshop view: off</button></div>
-    <p class="fine">Field Guide species and their behaviours are tagged Canon. The route, its ruins, relics and encounters are Experimental. Turn on Workshop view to see which is which.</p>
+    <p class="fine">What the books and the Field Guide say is tagged Canon: the route, the gums, the spinifex, the striders, the swarm at the wreck, the gate. The caves, the ruins and the relics are Experimental. Turn on Workshop view to see which is which.</p>
   </div>
 </div>
 
