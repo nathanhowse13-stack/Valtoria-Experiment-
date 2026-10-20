@@ -1,4 +1,5 @@
 import * as THREE from "./vendor/three.module.js";
+import { ideas, IDEA_KINDS, connectIdeas, addIdea, deleteIdea, exportIdeas, ideaWhere } from "../shared/notebook.js";
 // ============================================================
 // Procedural textures – everything is painted onto canvases at
 // load time, so the page ships with no image files at all.
@@ -5929,77 +5930,6 @@ function setWorkshop(on) {
   try { localStorage.setItem('valtoria-workshop', on ? '1' : '0'); } catch (e) { /* storage unavailable */ }
 }
 
-// ---------- the idea notebook: shared with the shack, kept in the page's database when there is one ----------
-const IDEA_KINDS = [['story', 'Story'], ['character', 'Character'], ['world', 'World'], ['gameplay', 'Gameplay'], ['fix', 'Fix']];
-const BUILD = 'yard-1';
-const ideas = { list: [], db: null, dl: null, shared: false, synced: false };
-try { ideas.list = JSON.parse(localStorage.getItem('valtoria-ideas') || '[]'); } catch (e) { ideas.list = []; }
-function keepIdeasLocal() {
-  try { localStorage.setItem('valtoria-ideas', JSON.stringify(ideas.list.map(i => ({ ...i, thumb: i.thumb && i.thumb.length < 60000 ? i.thumb : '' })))); } catch (e) { /* storage unavailable */ }
-}
-function ideasChanged() { if (state.menu && state.menuTab === 'ideas') renderMenu(); }
-async function connectIdeas() {
-  const c = window.claude;
-  if (!c || !c.use) return;
-  try { ideas.db = await c.use('db'); } catch (e) { ideas.db = null; }
-  try { ideas.dl = await c.use('downloads'); } catch (e) { ideas.dl = null; }
-  if (!ideas.db) return;
-  try {
-    ideas.db.collection('ideas').onSnapshot((snap) => {
-      const remote = snap.docs.map(d => ({ id: d.id, ...d.data(), shared: true })), ids = new Set(remote.map(i => i.id));
-      if (!ideas.synced) {
-        // anything jotted while the notebook was out of reach goes up now
-        ideas.synced = true;
-        const waiting = ideas.list.filter(i => !ids.has(i.id) && !i.shared);
-        setTimeout(async () => { for (const i of waiting) if (await shareIdea(i)) i.shared = true; keepIdeasLocal(); }, 0);
-      }
-      ideas.list = remote.concat(ideas.list.filter(i => !ids.has(i.id) && !i.shared)).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
-      ideas.shared = true; keepIdeasLocal(); ideasChanged();
-    }, () => { ideas.shared = false; ideasChanged(); });
-  } catch (e) { ideas.db = null; }
-}
-async function shareIdea(i) {
-  if (!ideas.db) return false;
-  const doc = { ...i }; delete doc.shared; delete doc.id;
-  for (let tries = 0; tries < 2; tries++) {
-    try { await ideas.db.collection('ideas').doc(i.id).set(doc); return true; } catch (e) {
-      if (e && e.code === 'quota_exceeded') { toast('The notebook is full. This idea is kept on this computer.'); return false; }
-      if (!e || e.code !== 'unavailable') return false;
-      await new Promise(r => setTimeout(r, 600 + Math.random() * 600));
-    }
-  }
-  return false;
-}
-async function addIdea(text, kind, context, thumb) {
-  const now = new Date();
-  const i = { id: 'i' + now.getTime().toString(36) + Math.floor(Math.random() * 1e4).toString(36), text: text.trim(), kind, at: now.toISOString(), ...context, thumb: thumb || '', build: BUILD };
-  ideas.list.unshift(i); keepIdeasLocal(); ideasChanged();
-  const ok = await shareIdea(i);
-  if (ok) i.shared = true;
-  keepIdeasLocal();
-  return ok;
-}
-async function deleteIdea(id) {
-  const k = ideas.list.findIndex(i => i.id === id); if (k < 0) return;
-  const [i] = ideas.list.splice(k, 1); keepIdeasLocal(); ideasChanged();
-  if (ideas.db && i.shared) try { await ideas.db.collection('ideas').doc(id).delete(); } catch (e) { /* stays gone locally */ }
-}
-async function exportIdeas() {
-  const lines = ['# Ideas from the shack and the yard', '', `Exported ${new Date().toLocaleString('en-AU')}`, ''];
-  for (const i of ideas.list) {
-    const kind = (IDEA_KINDS.find(k => k[0] === i.kind) || [0, 'Idea'])[1];
-    lines.push(`## ${kind} · ${new Date(i.at).toLocaleString('en-AU')}`, '', i.text, '', `*${[i.place, i.looking && 'looking at ' + i.looking, i.heat].filter(Boolean).join(' · ')}*`, '');
-  }
-  const data = lines.join('\n'), filename = 'valtoria-ideas.md';
-  if (ideas.dl) try { await ideas.dl.save({ filename, data }); return 'saved'; } catch (e) { if (e && e.code === 'declined') return 'declined'; }
-  if (window.claude) return 'failed';
-  try {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'text/markdown' })); a.download = filename;
-    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-    return 'saved';
-  } catch (e) { return 'failed'; }
-}
-
 // ---------- the jotter (N): what Jacob can see, where he's standing, and a thought ----------
 const jot = { open: false, kind: 'gameplay', ctx: null, thumb: '', wantThumb: false };
 const PLACES = [
@@ -6038,7 +5968,7 @@ async function saveJot() {
   const text = ui.jotText.value.trim(), c = jot.ctx;
   closeJot();
   if (!text) return;
-  const ok = await addIdea(text, jot.kind, { ...c, pos: [+player.x.toFixed(2), +player.z.toFixed(2)], yaw: +player.yaw.toFixed(2) }, jot.thumb);
+  const ok = await addIdea(text, jot.kind, 'yard-1', { ...c, pos: [+player.x.toFixed(2), +player.z.toFixed(2)], yaw: +player.yaw.toFixed(2) }, jot.thumb);
   toast(ok ? 'Idea kept in the notebook' : 'Idea kept on this computer');
 }
 // called straight after a frame is drawn, while the picture is still in the canvas
@@ -6124,7 +6054,18 @@ function goInside() {
   setTimeout(toShack, reduceMotion ? 50 : 700);
 }
 function leaveForTown() {
-  say([J('Guard the fort, Rustbucket.'), STAGE('The bull does not acknowledge him.'), DO(() => { sfx.engine(); rumble(0.6, 0.8, 1500); for (let i = 0; i < 30; i++) setTimeout(() => area.Y.smokeP.emit(YARD.tractor.x - 0.12, 2.15, YARD.tractor.z - 1.0, { vy: 1.2, vx: rand(-0.2, 0.2), life: 3, size: 0.2, size1: 1.4, alpha: 0.6, color: [0.12, 0.11, 0.1], drag: 0.6 }), i * 80); }), WAIT(2.2), DO(endMorning)]);
+  say([J('Guard the fort, Rustbucket.'), STAGE('The bull does not acknowledge him.'), DO(() => { sfx.engine(); rumble(0.6, 0.8, 1500); for (let i = 0; i < 30; i++) setTimeout(() => area.Y.smokeP.emit(YARD.tractor.x - 0.12, 2.15, YARD.tractor.z - 1.0, { vy: 1.2, vx: rand(-0.2, 0.2), life: 3, size: 0.2, size1: 1.4, alpha: 0.6, color: [0.12, 0.11, 0.1], drag: 0.6 }), i * 80); }), WAIT(2.2), DO(toRoad)]);
+}
+// out of the north gate: the road to Bleak Flats is its own page, and takes the clock and the load with it
+function toRoad() {
+  state.ended = true; releaseLock();
+  const done = CHORES.filter(c => state.chores[c.key]).map(c => c.key);
+  try {
+    localStorage.setItem('valtoria-road-handoff', JSON.stringify({ from: 'yard', at: Date.now(), clock: 370 + Math.floor(state.yardTime / 30), heat: temp(), chores: done, milk: !!state.yard.milked, dung: state.yard.dung, owned: [...state.owned] }));
+    localStorage.removeItem('valtoria-yard-save');
+  } catch (e) { /* storage unavailable: the road starts with its defaults */ }
+  ui.fxFade.classList.add('is-on');
+  setTimeout(() => { location.href = (window.__ROAD_URL || 'road.html') + '?from=yard'; }, reduceMotion ? 50 : 1500);
 }
 function endMorning() {
   state.ended = true;
@@ -6259,7 +6200,7 @@ function renderMenu(focusTab = false) {
   } else if (state.menuTab === 'ideas') {
     const kindOf = (k) => (IDEA_KINDS.find(x => x[0] === k) || [0, 'Idea'])[1];
     html = `<section class="m-sec"><div class="m-set"><span class="m-lede" style="margin:0">${ideas.db ? (ideas.shared ? 'Kept in this page’s notebook. Claude can read these next session.' : 'Connecting to the notebook…') : 'Kept on this computer. Export them and send them to Claude.'} Press <kbd>N</kbd> anywhere to jot one.</span><button type="button" id="ideas-export">Export</button></div>
-      ${ideas.list.length ? ideas.list.map(i => `<div class="idea">${i.thumb ? `<img src="${i.thumb}" alt="">` : '<span></span>'}<div><div class="t">${esc(i.text)}</div><div class="m">${esc([kindOf(i.kind), i.area === 'yard' ? 'the yard' : 'the shack', i.place, i.looking && 'looking at ' + i.looking, i.heat].filter(Boolean).join(' · '))}</div></div><button type="button" class="x" data-del="${esc(i.id)}" aria-label="Delete this idea">×</button></div>`).join('') : '<p class="m-lede">No ideas yet.</p>'}</section>`;
+      ${ideas.list.length ? ideas.list.map(i => `<div class="idea">${i.thumb ? `<img src="${i.thumb}" alt="">` : '<span></span>'}<div><div class="t">${esc(i.text)}</div><div class="m">${esc([kindOf(i.kind), ideaWhere(i), i.place, i.looking && 'looking at ' + i.looking, i.heat].filter(Boolean).join(' · '))}</div></div><button type="button" class="x" data-del="${esc(i.id)}" aria-label="Delete this idea">×</button></div>`).join('') : '<p class="m-lede">No ideas yet.</p>'}</section>`;
   } else if (state.menuTab === 'book') {
     html = `<p class="m-lede">The Book of Lost Echoes. Mum’s, before the raids. Many of the pages are blank, as if the story were waiting for its author to come back and finish it. You remember ${save.book.size} of ${BOOK_ORDER.length} passages.</p>
       <ol class="m-pages">${BOOK_ORDER.map(k => save.book.has(k) ? `<li class="m-page"><p>${esc(BOOK[k])}</p></li>` : `<li class="m-page is-blank"><p>A blank page.</p></li>`).join('')}</ol>`;
@@ -6776,7 +6717,7 @@ async function start(data) {
   ui.jot.addEventListener('pointerdown', (e) => { if (e.target === ui.jot) closeJot(); });
   ui.endIdeas.addEventListener('click', () => { resumeYard(); openMenu('ideas'); });
   addEventListener('pagehide', saveYard);
-  connectIdeas();
+  connectIdeas({ onChange: () => { if (state.menu && state.menuTab === 'ideas') renderMenu(); }, onFull: () => toast('The notebook is full. This idea is kept on this computer.') });
   ui.book.addEventListener('click', () => readBook());
   ui.menuBtn.addEventListener('click', () => openMenu());
   ui.sound.addEventListener('click', () => { initAudio(); setMuted(!audio.muted); });

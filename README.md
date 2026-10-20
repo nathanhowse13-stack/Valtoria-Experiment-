@@ -12,13 +12,47 @@ game/
   yard.html         The Yard at First Light: the page markup and styles
   yard/main.js      the yard's source: world, creatures, chores, dialogue, menu, workshop tags, the jotter
   yard/vendor/      Three.js r160, kept locally so the page works offline
+  road.html         The Road to Bleak Flats: markup and styles
+  road/main.js      the road's source: the Red Waste, the tractor, the Field Guide's hazards, survival
+  shared/notebook.js  the idea notebook all three pages write to
+tools/build-pc.mjs  builds the single-file PC copies (npm install && npm run build:pc)
 ```
 
-The two pages are one game. Working the shack's three bolts and stepping out takes you to
+The three pages are one game. Working the shack's three bolts and stepping out takes you to
 `yard.html?from=shack`. What Jacob did inside comes with him: breakfast, the wash, the flies, the Book
 and the little green beast. The yard's door takes you back into the shack, and each page keeps its own
 save, so going back and forth picks up where you left off. Starting the morning again in either
 page clears both saves.
+
+Finishing the yard's chores and choosing **Load up and head to town** drives the tractor out of the north
+gate onto `road.html?from=yard`, carrying the clock and the load. The road is 1.8 km of playable track
+standing for Valtoria's twenty clicks: five minutes by tractor without stopping, longer for every
+detour. It ends at the Bleak Flats perimeter fence. The town isn't built yet.
+
+### The road's hazards
+
+Each Field Guide species does what the Guide says it does. Each also has a tell and a counter, so the
+player learns the Waste rather than out-gunning it. The tells and counters are tagged Experimental.
+
+| Species | What it does (Canon) | The tell and the counter (Experimental) |
+| --- | --- | --- |
+| Razor-Spinifex | cuts, and feeds on the blood | clumps redden as they feed; walk slowly through or go round, the tractor crushes it |
+| Compass-Weed | scrambles the compass and the sense of direction | the needle swings and footsteps drift; steer by the power line, the pipeline and the sun |
+| Gallows-Gum | waits for someone to relax in its shade | a creak after a couple of seconds still; keep moving |
+| Drop-Stalker | ambushes from above, around rocky overhangs | clicking from the rocks; look up and hold its eye and it won't drop |
+| Gossip-Flies | whisper fears (fist-sized) | outrun them in the tractor; an ear-cage found in the yard halves them |
+| Judas-Wattle | Golden Haze turns the red world green | a mirage of water along a tempting shortcut |
+| Argus-Bush | watches, and records fear and memory | every eye turns to follow Jacob |
+| Salt-Strider | the pale walker of the salt country | one crossing: stop, and it passes; keep moving and it charges |
+
+The tractor is the safe place: stress falls while you're aboard, flies can't keep up at speed, and
+bleeding slows. Heat climbs with the clock, so water matters. Refill the water bag at pipeline leaks,
+the first shack's tank and the seep in the last rock shelter.
+
+The road's systems came from the *Road Relic v0.5* prototype: the route length, pacing, power line,
+pipeline, ruins, vitals and six finds. They were rebuilt in the game's own renderer, controls, saves,
+tags and notebook. One naming difference: the prototype called the tractor Rustbucket, but in the yard
+Rustbucket is Jacob's bull. Here the tractor is just the tractor until the author decides.
 
 ## Playing locally
 
@@ -28,7 +62,8 @@ Serve the `game` folder over HTTP (pages opened with `file://` can't load their 
 cd game && python3 -m http.server 8000
 ```
 
-Then open <http://localhost:8000/>. To go straight to the yard, open <http://localhost:8000/yard.html>.
+Then open <http://localhost:8000/>. To go straight to the yard or the road, open
+<http://localhost:8000/yard.html> or <http://localhost:8000/road.html>.
 
 Controls: WASD walk, Shift run (outside), mouse look, E use, F or left-click swing, Q swap tools,
 B the Book, Tab the menu, N jot an idea. An Xbox controller also works when the page is opened
