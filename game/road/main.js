@@ -16,10 +16,14 @@
 //   Gossip-Flies    whisper fears. Outrun them in the tractor; an ear-cage helps.
 //   Judas-Wattle    golden haze, a green lie over the red.   Argus-Bush  watches, and remembers.
 //   Salt-Strider    one crossing. Stop and let it pass.
+// The tractor (shared/tractor.js; unnamed, Rustbucket is the bull) is the safe place: its anima
+// shielding keeps the flies out of Jacob's head, its canister is a second water supply, its
+// compartment carries the load and the finds, and its radio picks up Bleak Flats.
 // Units are metres. The road runs north along +z; east is −x.
 // ============================================================
 import * as THREE from '../yard/vendor/three.module.js';
 import { ideas, IDEA_KINDS, connectIdeas, addIdea, deleteIdea, exportIdeas, ideaWhere } from '../shared/notebook.js';
+import { buildTractor as buildTractorModel } from '../shared/tractor.js';
 
 const ROUTE = 1800, LORE_KM = 20, ARRIVE_Z = 1790, HALF_W = 330, CHUNK = 100;
 const SPEED = { tractor: 6, offroad: 0.56, reverse: 2, walk: 1.22, run: 2.26 };
@@ -183,7 +187,7 @@ const shades = [];        // where the sun can't reach: { x, z, r } or boxes, wi
 const species = {};       // what Jacob has met, for the field notes
 const chunks = [];
 const W = { spinifex: [], weeds: [], gums: [], stalkers: [], argus: [], wattles: [], flySources: [], mirages: [], leaks: [], smoke: [] };
-const addThing = (t) => { things.push({ r: 1.4, y: 0.8, enabled: () => true, ...t }); return t; };
+const addThing = (t) => { const o = { r: 1.4, y: 0.8, enabled: () => true, ...t }; things.push(o); return o; };
 
 function buildChunk(i) {
   const g = new THREE.Group(), z0 = i * CHUNK, R = rng(9001 + i * 7919);
@@ -264,8 +268,8 @@ function buildChunk(i) {
         const pool = mesh(new THREE.CircleGeometry(1.4, 20), new THREE.MeshStandardMaterial({ color: 0x2a1a14, roughness: 0.15, metalness: 0.2 }), { cast: false });
         pool.rotation.x = -Math.PI / 2; pool.position.set(lx, h(lx, lz) + 0.04, lz); g.add(pool);
         W.leaks.push({ x: lx, z: lz });
-        addThing({ id: 'leak' + z, name: 'Pipeline leak', verb: () => S.sips < 4 ? 'Fill the water bag' : 'Look', x: lx, y: 1.2, z: lz, r: 2.2, prov: ['X', 'the old water pipeline: ' + NEW], use: () => {
-          if (S.sips < 4) { S.sips = 4; sfx.fill(); bark('Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', ['X', NEW]); updateVitals(); }
+        addThing({ id: 'leak' + z, name: 'Pipeline leak', verb: () => S.sips < 4 || canFill() ? 'Fill up' : 'Look', x: lx, y: 1.2, z: lz, r: 2.2, prov: ['X', 'the old water pipeline: ' + NEW], use: () => {
+          if (S.sips < 4 || canFill()) { S.sips = 4; const c = topUpCanister(); sfx.fill(); bark('Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.' + c, ['X', NEW]); updateVitals(); }
           else bark('The pipe weeps here. Cogswell would bill the ground for it if he could.', ['X', NEW]);
         } });
         continue;
@@ -385,7 +389,7 @@ function buildShack(def) {
     blockers.push({ x: tp.x, z: tp.z, r: 0.8 });
     addThing({ id: def.id + ':tank', name: 'Rainwater tank', verb: () => S.flags.tank ? 'Look' : 'Fill the water bag', x: tp.x, y: y + 1, z: tp.z, r: 1.6, prov: ['X', NEW], use: () => {
       if (S.flags.tank) { bark('Left some, like the sign said.', ['X', NEW]); return; }
-      S.flags.tank = true; S.sips = 4; sfx.fill(); updateVitals(); bark('Somebody’s kindness, in a tin tank. I’ll leave a little for the next fool.', ['X', NEW]);
+      S.flags.tank = true; S.sips = 4; const c = topUpCanister(); sfx.fill(); updateVitals(); bark('Somebody’s kindness, in a tin tank. I’ll leave a little for the next fool.' + c, ['X', NEW]);
     } });
   }
   if (info.relic) placeRelic(info.relic, world(2.1, -1.6).add(new THREE.Vector3(0, y + 0.66, 0)), def.id);
@@ -414,8 +418,8 @@ function buildCave(def) {
   } else {
     const seep = world(0, 0.05, -1.5), pool = mesh(new THREE.CircleGeometry(0.9, 16), new THREE.MeshStandardMaterial({ color: 0x241612, roughness: 0.12 }), { cast: false });
     pool.rotation.x = -Math.PI / 2; pool.position.set(seep.x, h(seep.x, seep.z) + 0.04, seep.z); scene.add(pool);
-    addThing({ id: 'seep' + z, name: 'Seep at the back of the shelter', verb: () => S.sips < 4 ? 'Fill the water bag' : 'Look', x: seep.x, y: y + 0.4, z: seep.z, r: 1.6, prov: ['X', NEW], use: () => {
-      if (S.sips < 4) { S.sips = 4; sfx.fill(); updateVitals(); bark('A seep. Cold as anything out here gets. Nobody’s taxing this one. Yet.', ['X', NEW]); }
+    addThing({ id: 'seep' + z, name: 'Seep at the back of the shelter', verb: () => S.sips < 4 || canFill() ? 'Fill up' : 'Look', x: seep.x, y: y + 0.4, z: seep.z, r: 1.6, prov: ['X', NEW], use: () => {
+      if (S.sips < 4 || canFill()) { S.sips = 4; const c = topUpCanister(); sfx.fill(); updateVitals(); bark('A seep. Cold as anything out here gets. Nobody’s taxing this one. Yet.' + c, ['X', NEW]); }
       else bark('Water out of rock. The Book would call it a miracle. I call it Tuesday, if I’m lucky.', ['X', NEW]);
     } });
     placeRelic({ name: 'Pre-Fracture glass', text: 'A thick lens of glass, ground perfectly smooth, wedged in a crack at the back of the shelter. No anima in it at all.' }, world(1.3, 0.3, -1.9), 'cave' + z);
@@ -543,33 +547,47 @@ function buildStrider() {
   return { g, legs, state: 'waiting', x: 0, z: 1082, dir: 1, agitation: 0, hit: false, t: 0 };
 }
 
-// ---------- the tractor: Jacob's, red once, and the safest place out here ----------
+// ---------- the tractor: the shared model, and where it is ----------
 function buildTractor() {
-  const g = new THREE.Group(); scene.add(g);
-  const add = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = mesh(planarUV(geo, 0.8), mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); g.add(m); return m; };
-  add(new THREE.BoxGeometry(0.9, 0.85, 2.2), M.paint, 0, 1.25, 0.95);            // bonnet over the engine
-  add(new THREE.BoxGeometry(0.95, 0.9, 0.1), M.iron, 0, 1.2, 2.08);              // the grille
-  add(new THREE.BoxGeometry(1.1, 0.7, 1.4), M.paint, 0, 1.15, -0.65);            // the body under the seat
-  add(new THREE.BoxGeometry(0.4, 0.2, 2.6), M.iron, 0, 0.62, 0.6);               // the frame
-  add(new THREE.BoxGeometry(0.6, 0.12, 0.5), M.rubber, 0, 1.82, -0.75);          // seat
-  add(new THREE.BoxGeometry(0.6, 0.55, 0.1), M.rubber, 0, 2.05, -1.0);
-  add(new THREE.TorusGeometry(0.22, 0.03, 6, 16), M.black, 0, 2.05, -0.2, -0.9); // wheel
-  add(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 6), M.black, 0, 1.75, -0.05, 0.5);
-  add(new THREE.CylinderGeometry(0.07, 0.08, 1.4, 8), M.iron, 0.3, 2.2, 1.55);   // exhaust stack
-  add(new THREE.CylinderGeometry(0.1, 0.07, 0.15, 8), M.black, 0.3, 2.95, 1.55);
-  for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.85, 0.85, 0.5, 16, 1, true, 0, Math.PI), M.paint, s * 0.92, 0.95, -0.75, 0, 0, Math.PI / 2);   // fenders
-  const wheels = [];
-  for (const [s, z, r, w] of [[-1, -0.75, 0.8, 0.45], [1, -0.75, 0.8, 0.45], [-1, 1.7, 0.45, 0.25], [1, 1.7, 0.45, 0.25]]) {
-    const wg = new THREE.Group(); wg.position.set(s * (r > 0.6 ? 0.92 : 0.62), r, z); g.add(wg);
-    const tyre = mesh(new THREE.CylinderGeometry(r, r, w, 20), M.rubber); tyre.rotation.z = Math.PI / 2; wg.add(tyre);
-    const rim = mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.55, w + 0.02, 12), M.paint); rim.rotation.z = Math.PI / 2; wg.add(rim);
-    for (let k = 0; k < 10; k++) { const lug = mesh(new THREE.BoxGeometry(w, 0.08, 0.14), M.rubber); const a = k / 10 * TAU; lug.position.set(0, Math.cos(a) * r, Math.sin(a) * r); lug.rotation.x = a; wg.add(lug); }
-    wheels.push({ g: wg, r, front: z > 0 });
-  }
-  // the load: the milk can and the dung, strapped behind the seat
-  const can = add(new THREE.CylinderGeometry(0.2, 0.22, 0.6, 14), M.tin, -0.3, 1.8, -1.35);
-  const bin = add(new THREE.CylinderGeometry(0.3, 0.27, 0.62, 14), M.iron, 0.28, 1.8, -1.35);
-  return { g, wheels, can, bin, x: 0, z: 0, yaw: 0, speed: 0, roll: 0, stall: 0 };
+  const model = buildTractorModel(THREE, { maxAniso });
+  scene.add(model.group);
+  return { model, g: model.group, x: 0, z: 0, yaw: 0, speed: 0, stall: 0, wasThrottle: false };
+}
+const CANISTER_MAX = 6;
+// the tractor's own things: where they are this frame, in the world
+const _tw = new THREE.Vector3();
+function tractorPoint(lx, ly, lz) { return _tw.set(lx, ly, lz).applyMatrix4(tractor.g.matrixWorld); }
+function addTractorThings() {
+  const can = addThing({ id: 'tractor:canister', name: 'The tractor’s water canister', verb: () => S.can && S.sips < 4 ? 'Fill the water bag' : 'Look', r: 1.2, prov: ['X', 'the tractor’s refits: ' + NEW], local: [-0.78, 1.25, 0.05], use: () => {
+    if (!S.can) { bark('Canister’s dry. Fill it at a leak or the seep, with the tractor close by.', ['X', NEW]); return; }
+    if (S.sips >= 4) { bark(`Canister’s got ${S.can} in it. Bag’s full. Good.`, ['X', NEW]); return; }
+    const n = Math.min(S.can, 4 - S.sips); S.can -= n; S.sips += n; sfx.fill(); updateVitals(); bark('Off the tap into the bag. Every drop accounted for.', ['X', NEW]);
+  } });
+  const box = addThing({ id: 'tractor:compartment', name: 'The back compartment', verb: () => S.flags.lid ? 'Shut it' : 'Open it', r: 1.2, prov: ['X', 'the tractor’s refits: ' + NEW], local: [0, 1.15, -1.6], use: () => {
+    S.flags.lid = !S.flags.lid; tractor.model.setLid(S.flags.lid); sfx.door();
+    if (!S.flags.lid) return;
+    const n = Object.keys(S.finds).length, h0 = S.handoff;
+    const bits = ['spare wire', 'a tin of grease', 'the tyre awl'];
+    if (n) bits.push(`${n === 1 ? 'one find' : words(n) + ' finds'} from the road, wrapped in rag`);
+    bark(`In the compartment: ${bits.join(', ')}.${h0 && h0.dung >= 6 ? ' The dung bin’s strapped down on the lid.' : ''}`, ['X', NEW]);
+  } });
+  W.tractorThings = [can, box];
+}
+const words = (n) => ['no', 'one', 'two', 'three', 'four', 'five', 'six'][n] || String(n);
+// the radio: Bleak Flats, when the antenna catches it
+const RADIO = [
+  '…Flats relay, Flats relay… water truck’s held at the Silos till noon… repeat, noon…',
+  '…accounts in arrears will be visited in person. H. R. Cogswell and Associates thanks you for your…',
+  '…anyone out on the north road, strider walking the salt this morning. Give it room…',
+  '…Rusty Cog’s open, and the stew is technically food…',
+  '…static, and under it, very faint, somebody humming…',
+];
+function radio() {
+  if (!S.inTractor) return;
+  sfx.radio();
+  const line = RADIO[(S.flags.radio = ((S.flags.radio ?? -1) + 1) % RADIO.length)];
+  ui.whisper.innerHTML = `<span style="font-style:normal;color:#d8e6c8">Radio · </span>${esc(line)}<span class="tagline ws">${tagHTML('X', 'the radio: ' + NEW)}</span>`;
+  ui.whisper.classList.add('on'); clearTimeout(whisperTimer); whisperTimer = setTimeout(() => ui.whisper.classList.remove('on'), 5200);
 }
 
 // ---------- Bleak Flats on the horizon: the fence, the rim, headframes and stamp-mill smoke ----------
@@ -633,7 +651,7 @@ function updateSmoke(dt) {
 // ---------- state ----------
 const S = {
   started: false, paused: false, ended: false, dead: false, inTractor: true, view: 'chase', compass: true, workshop: false,
-  time: 6 * 3600 + 25 * 60, health: 100, water: 82, stress: 8, bleed: 0, sips: 3, disoriented: 0, haze: 0, earcage: false,
+  time: 6 * 3600 + 25 * 60, health: 100, water: 82, stress: 8, bleed: 0, sips: 3, can: 4, disoriented: 0, haze: 0, earcage: false,
   finds: {}, flags: {}, met: {}, footKm: 0, handoff: null, menuTab: 'finds',
 };
 const P = { x: 0, z: 0, yaw: 0, pitch: -0.05, look: 0, speed: 0, bob: 0, drift: 0, stun: 0 };
@@ -705,6 +723,7 @@ const sfx = {
   moan: () => { tone({ type: 'sawtooth', f: 55, f2: 42, dur: 2.4, gain: 0.07 }); tone({ f: 330, f2: 300, dur: 2.0, gain: 0.02 }); },
   thump: (g = 0.3) => { tone({ f: 60, f2: 38, dur: 0.3, gain: g }); noiseHit({ type: 'lowpass', f: 200, dur: 0.15, gain: g * 0.6 }); },
   door: () => tone({ type: 'sawtooth', f: 180, f2: 260, dur: 0.4, gain: 0.03 }),
+  radio: () => { noiseHit({ f: 2400, q: 0.6, dur: 1.4, gain: 0.08 }); tone({ type: 'square', f: 880, dur: 0.06, gain: 0.02 }); },
 };
 
 // ---------- the HUD ----------
@@ -737,7 +756,7 @@ function hurt(amount, why) {
 function updateVitals() {
   const set = (el, v) => { el.querySelector('i').style.width = clamp(v, 0, 100) + '%'; el.querySelector('.n').textContent = Math.round(v); };
   set(meters.health, S.health); set(meters.water, S.water); set(meters.stress, S.stress);
-  const st = [`Water bag: ${S.sips} sip${S.sips === 1 ? '' : 's'}`];
+  const st = [`Bag ${S.sips}/4 · canister ${S.can}/${CANISTER_MAX}`];
   if (S.bleed > 0.15) st.push('<span class="bad">bleeding</span>');
   if (S.disoriented > 0) st.push('<span class="bad">turned around</span>');
   if (shadeAt(P.x, P.z)) st.push('in the shade');
@@ -762,7 +781,7 @@ function updateHud(dt) {
   ui.compassNote.hidden = !(S.compass && S.disoriented > 0);
   ui.compassNote.textContent = 'Compass-Weed · the needle’s lying. Follow the wires.';
   ui.mode.innerHTML = S.inTractor
-    ? `<b>The tractor</b>W/S throttle · A/D steer · V ${S.view === 'chase' ? 'seat' : 'chase'} view · E climb down`
+    ? `<b>The tractor</b>W/S throttle · A/D steer · F drink · R radio · V ${S.view === 'chase' ? 'seat' : 'chase'} view · E climb down`
     : `<b>On foot</b>WASD walk · Shift run · E use · F drink · ${Math.hypot(P.x - tractor.x, P.z - tractor.z) < 3.4 ? 'E climb aboard' : 'the tractor waits'}`;
   ui.fxStress.style.opacity = smooth(45, 100, S.stress);
   ui.fxBleed.style.opacity = clamp(S.bleed / 2, 0, 0.9);
@@ -787,6 +806,7 @@ addEventListener('keydown', (e) => {
   if (k === 'KeyF') drink();
   if (k === 'KeyC') S.compass = !S.compass;
   if (k === 'KeyV') S.view = S.view === 'chase' ? 'seat' : 'chase';
+  if (k === 'KeyR') radio();
   if (k === 'KeyN') openJot();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -842,14 +862,23 @@ function use() {
   }
   if (target) { target.use(); return; }
   if (Math.hypot(P.x - tractor.x, P.z - tractor.z) < 3.4) {
-    S.inTractor = true; P.look = 0; sfx.door();
-    if (flySwarms.length) bark('Back aboard. Let’s see the little gossips keep up.', ['X', NEW]);
+    S.inTractor = true; P.look = 0; sfx.door(); tractor.model.spit(20);
+    if (flySwarms.length) bark('Back aboard. The shielding hums, and the whispering goes thin and far away.', ['X', 'the anima shielding: ' + NEW]);
+    else once('shield', 'Back aboard. The shielding hums. In here, nothing gets into my head that I didn’t put there.', ['X', 'the anima shielding: ' + NEW]);
   }
 }
 function drink() {
-  if (!S.sips) { once('dry', 'Bag’s empty. The pipeline leaks, if you know where.', ['X', NEW]); return; }
   if (S.water > 92) { bark('Not thirsty yet. Out here you ration even that.', ['X', NEW]); return; }
+  if (S.inTractor && S.can) { S.can--; S.water = Math.min(100, S.water + 30); sfx.gulp(); updateVitals(); return; }   // at the wheel, off the canister's tap
+  if (!S.sips) { once('dry', S.can ? 'Bag’s empty. There’s some in the canister on the tractor.' : 'Bag’s empty, canister too. The pipeline leaks, if you know where.', ['X', NEW]); return; }
   S.sips--; S.water = Math.min(100, S.water + 30); sfx.gulp(); updateVitals();
+}
+
+// the canister fills at the same places the bag does, if the tractor's parked close enough to carry it over
+const canFill = () => S.can < CANISTER_MAX && Math.hypot(P.x - tractor.x, P.z - tractor.z) < 14;
+function topUpCanister() {
+  if (!canFill()) return S.can < CANISTER_MAX ? ' The canister’s on the tractor. Too far to lug it.' : '';
+  S.can = CANISTER_MAX; return ' Canister’s full too.';
 }
 
 // ---------- the jotter (N) and the notebook ----------
@@ -905,7 +934,7 @@ function renderMenu() {
     html = `<div class="set"><span>Workshop view: tags on every line and thing</span><button class="btn" id="set-ws" aria-pressed="${S.workshop}">${S.workshop ? 'On' : 'Off'}</button></div>
       <div class="set"><span>Compass on screen</span><button class="btn" id="set-compass">${S.compass ? 'On' : 'Off'}</button></div>
       <div class="set"><span>Leave the road</span><span><button class="btn" id="set-yard">Back to the yard</button> <button class="btn" id="set-restart">Start the road again</button></span></div>
-      <h3>Controls</h3><p>Driving: W/S throttle and brake, A/D steer, mouse looks, V seat or chase view, E climb down (stop first). On foot: WASD, Shift run, E use or climb aboard, F drink. Always: C compass, Tab this notebook, N jot an idea, Esc pause.</p>`;
+      <h3>Controls</h3><p>Driving: W/S throttle and brake, A/D steer, mouse looks, F drink from the canister, R the radio, V seat or chase view, E climb down (stop first). On foot: WASD, Shift run, E use or climb aboard, F drink. Always: C compass, Tab this notebook, N jot an idea, Esc pause.</p>`;
   }
   ui.menuBody.innerHTML = html;
 }
@@ -984,7 +1013,7 @@ function placeCamera(dt) {
     const sd = h(tractor.x - Math.cos(tractor.yaw), tractor.z + Math.sin(tractor.yaw)) - h(tractor.x + Math.cos(tractor.yaw), tractor.z - Math.sin(tractor.yaw));
     tractor.g.rotation.set(-Math.atan2(f, 2.7) + Math.sin(S.time * 0.9) * 0.003 * tractor.speed, tractor.yaw, Math.atan2(sd, 2) * 0.6, 'YXZ');
     if (S.view === 'seat') {
-      _n.set(0, 2.55, -0.65).applyEuler(tractor.g.rotation).add(tractor.g.position);
+      _n.set(-0.06, 2.26, -0.52).applyEuler(tractor.g.rotation).add(tractor.g.position);
       camera.position.copy(_n); camera.rotation.set(P.pitch, tractor.yaw + P.look + Math.PI, 0);
     } else {
       const yaw = tractor.yaw + P.look, back = 8.5, cx = tractor.x - Math.sin(yaw) * back, cz = tractor.z - Math.cos(yaw) * back;
@@ -998,7 +1027,12 @@ function placeCamera(dt) {
     camera.rotation.set(P.pitch, P.yaw + Math.PI, 0);
     tractor.g.position.set(tractor.x, h(tractor.x, tractor.z), tractor.z);
   }
-  for (const w of tractor.wheels) w.g.rotation.x += tractor.speed * dt / w.r;
+  const throttle = S.inTractor && !S.paused && (keys.has('KeyW') || keys.has('ArrowUp')) ? 1 : 0;
+  if (throttle && !tractor.wasThrottle) tractor.model.spit(30);       // opening the throttle coughs phosphor
+  tractor.wasThrottle = !!throttle;
+  tractor.model.update(S.paused ? 0 : dt, { running: S.started && tractor.stall <= 0, throttle, speed: tractor.speed });
+  tractor.g.updateMatrixWorld();
+  for (const t of W.tractorThings || []) { const p = tractorPoint(...t.local); t.x = p.x; t.y = p.y; t.z = p.z; }
 }
 
 // ---------- the sun across the morning: up in the east, swinging north (the Waste is southern) ----------
@@ -1117,7 +1151,7 @@ function updateFlies(dt) {
       for (const w of f.wings) w.rotation.y = Math.sin(f.ph * 40) * 0.8 * w.userData.s;
       f.f.lookAt(camera.position);
     });
-    if (!S.inTractor || tractor.speed < 2) {
+    if (!S.inTractor) {        // aboard, the anima shielding keeps them out of his head, even parked
       S.stress = Math.min(100, S.stress + dt * (S.earcage ? 0.25 : 0.7));
       sw.whisperIn -= dt * (S.earcage ? 0.5 : 1);
       if (sw.whisperIn <= 0) {
@@ -1262,7 +1296,7 @@ function begin() {
   initAudio();
   S.started = true; ui.title.hidden = true; ui.hud.hidden = false;
   const h0 = S.handoff = readHandoff();
-  if (h0) { if (h0.clock) S.time = h0.clock * 60; tractor.can.visible = !!h0.milk; tractor.bin.visible = (h0.dung || 0) >= 6; }
+  if (h0) { if (h0.clock) S.time = h0.clock * 60; tractor.model.milk.visible = !!h0.milk; tractor.model.load.visible = (h0.dung || 0) >= 6; }
   const arrive0 = () => bark(h0 && h0.milk ? 'Milk in the can, dung in the bin, and twenty clicks of the Waste between them and Cogswell. Here we go again.' : 'Twenty clicks to Bleak Flats. Same road, same heat, same things wanting a piece of me.', ['X', NEW]);
   if (ui.fxFade.classList.contains('on')) setTimeout(() => { ui.fxFade.style.transition = ''; ui.fxFade.classList.remove('on'); ui.fadeLine.hidden = true; arrive0(); }, reduceMotion ? 50 : 1300);
   else arrive0();
@@ -1279,7 +1313,7 @@ async function boot() {
   placeRelic({ name: 'Pipewright token', text: 'A pressed-tin token, a wrench and a drop of water on it. Good for one day’s wages, from people who no longer pay them.' }, new THREE.Vector3(leak.x + 1.6, h(leak.x + 1.6, leak.z) + 0.25, leak.z + 0.6), 'leak');
   placeRelic({ name: 'Miner’s brass chit', text: 'A brass tally chit, the kind the mines hand out for a shift. This one says 1 SHIFT · BF. Somebody didn’t come back to cash it.' }, new THREE.Vector3(roadX(1712) + 30, h(roadX(1712) + 30, 1712) + 0.25, 1712), 'rim');
   buildBleakFlats(); buildMesas();
-  tractor = buildTractor(); strider = buildStrider();
+  tractor = buildTractor(); strider = buildStrider(); addTractorThings();
   tractor.x = roadX(8); tractor.z = 8; P.x = tractor.x; P.z = tractor.z;
   { const pm = new THREE.PMREMGenerator(renderer), env = new THREE.Scene(); env.add(sky.clone()); updateSun(); scene.environment = pm.fromScene(env, 0.04).texture; pm.dispose(); }
   setWorkshop(S.workshop);

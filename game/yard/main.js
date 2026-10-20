@@ -1,4 +1,5 @@
 import * as THREE from "./vendor/three.module.js";
+import { buildTractor } from "../shared/tractor.js";
 import { ideas, IDEA_KINDS, connectIdeas, addIdea, deleteIdea, exportIdeas, ideaWhere } from "../shared/notebook.js";
 // ============================================================
 // Procedural textures – everything is painted onto canvases at
@@ -3015,48 +3016,14 @@ function yardShed(Y) {
 
 // ---------- the tractor: rusted, no windshield, cargo bin on the back ----------
 function yardTractor(Y) {
-  const { mats: m, S } = Y, TR = YARD.tractor, g = new THREE.Group(), B = new Batch(), IRONUV = { mode: 'world', scale: 0.5 }, PAINT = { mode: 'world', scale: 1.6 };
-  // the tractor faces north (-z); local frame: x across, z along (front at -z)
-  const wheel = (x, y, z, r, w) => {
-    B.add(new THREE.TorusGeometry(r - w * 0.35, w * 0.42, 10, 28), m.tyre, M(x, y, z, 0, Math.PI / 2, 0), { mode: 'scale', su: 1, sv: 1 });
-    B.cyl(m.tractor, r * 0.62, r * 0.62, w * 0.6, x, y, z, 0, 0, Math.PI / 2, 18, 0.6);
-    B.cyl(m.rust, r * 0.18, r * 0.18, w * 0.75, x, y, z, 0, 0, Math.PI / 2, 10, 0.4);
-  };
-  wheel(-0.78, 0.68, 0.75, 0.68, 0.38); wheel(0.78, 0.68, 0.75, 0.68, 0.38);
-  wheel(-0.62, 0.36, -1.15, 0.36, 0.2); wheel(0.62, 0.36, -1.15, 0.36, 0.2);
-  B.box(m.tractor, -0.3, 0.55, -1.55, 0.3, 1.18, 0.15, PAINT);                       // engine and body
-  B.add(new THREE.CylinderGeometry(0.3, 0.3, 1.7, 14, 1, true, Math.PI / 2, Math.PI), m.tractorDS, M(0, 1.18, -0.7, Math.PI / 2, 0, 0), PAINT);
-  B.add(new THREE.CircleGeometry(0.3, 14, 0, Math.PI), m.tractor, M(0, 1.18, -1.55, 0, Math.PI, 0), PAINT);
-  B.box(m.iron, -0.28, 0.6, -1.62, 0.28, 1.25, -1.55, IRONUV);                        // grille
-  for (let i = 0; i < 7; i++) B.box(m.rust, -0.26, 0.64 + i * 0.085, -1.64, 0.26, 0.66 + i * 0.085, -1.6, IRONUV);
-  B.box(m.rust, -0.12, 0.25, -1.3, 0.12, 0.55, -0.9, IRONUV);                         // front axle
-  B.box(m.iron, -0.65, 0.65, -1.15, 0.65, 0.75, -1.1, IRONUV);
-  B.rod(m.iron, -0.12, 1.45, -1.0, -0.12, 2.1, -1.0, 0.04, 10);                       // exhaust stack
-  B.cyl(m.rust, 0.05, 0.04, 0.06, -0.12, 2.12, -1.0, 0, 0, 0.6, 8);
-  B.box(m.tractor, -0.45, 0.9, 0.1, 0.45, 1.05, 0.95, PAINT);                          // rear housing
-  for (const s of [-1, 1]) B.add(new THREE.CylinderGeometry(0.78, 0.78, 0.45, 18, 1, true, Math.PI / 6, Math.PI * 2 / 3), m.tractorDS, M(s * 0.78, 0.68, 0.75, 0, 0, Math.PI / 2), PAINT); // fenders
-  B.cyl(m.iron, 0.03, 0.03, 0.6, 0, 1.25, 0.6, 0, 0, 0, 8);                           // seat post
-  B.box(m.iron, -0.22, 1.5, 0.45, 0.22, 1.56, 0.85, IRONUV);                           // pan seat
-  B.box(m.iron, -0.22, 1.55, 0.82, 0.22, 1.9, 0.86, IRONUV);
-  B.rod(m.iron, 0, 1.2, -0.2, 0, 1.7, 0.15, 0.022);                                   // steering column
-  B.add(new THREE.TorusGeometry(0.19, 0.016, 6, 20), m.rubber, M(0, 1.72, 0.16, 1.1, 0, 0), IRONUV);
-  // the cab frame where the windshield used to be
-  for (const [x, z] of [[-0.7, -0.15], [0.7, -0.15], [-0.7, 1.05], [0.7, 1.05]]) B.rod(m.iron, x, 1.0, z, x, 2.45, z, 0.03, 8);
-  B.box(m.tinOld, -0.85, 2.45, -0.3, 0.85, 2.48, 1.2, { mode: 'world', scale: 1 });
-  B.rod(m.iron, -0.7, 1.95, -0.15, 0.7, 1.95, -0.15, 0.025, 6); B.rod(m.iron, -0.7, 1.3, -0.15, 0.7, 1.3, -0.15, 0.02, 6);
-  B.add(new THREE.PlaneGeometry(0.18, 0.12), m.glassDirty, M(0.6, 1.88, -0.15), IRONUV);   // a last shard in the corner
-  // cargo bin on the back
-  B.box(m.rust, -0.85, 0.75, 1.25, 0.85, 0.8, 2.25, IRONUV);
-  for (const [x0, z0, x1, z1] of [[-0.85, 1.25, 0.85, 1.29], [-0.85, 2.21, 0.85, 2.25], [-0.85, 1.25, -0.81, 2.25], [0.81, 1.25, 0.85, 2.25]]) B.box(m.rust, x0, 0.8, z0, x1, 1.25, z1, IRONUV);
-  B.rod(m.iron, 0, 0.75, 1.3, 0, 0.9, 0.9, 0.05, 8);
-  B.build(g);
-  // cargo that appears as the morning goes: the milk canister, the strapped bin
-  const can = new THREE.Mesh(lathe([[0.0, 0], [0.16, 0], [0.17, 0.4], [0.1, 0.5], [0.1, 0.56], [0.0, 0.56]], 18), m.galv); can.position.set(-0.45, 0.8, 1.75); can.visible = false; can.castShadow = true; g.add(can);
-  const strap = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.012, 4, 24), m.vine); strap.rotation.x = Math.PI / 2; strap.position.set(0.25, 1.15, 1.75); strap.scale.set(0.9, 0.8, 1); strap.visible = false; g.add(strap);
-  g.position.set(TR.x, 0, TR.z); Y.scene.add(g);
-  Y.tractor = { group: g, can, strap, engineAt: new THREE.Vector3(TR.x, 1.1, TR.z - 0.9), wires: new THREE.Vector3(TR.x + 0.3, 0.9, TR.z - 0.5) };
-  Y.colliders.push(rectC(TR.x - 1.2, TR.z - 1.65, TR.x + 1.2, TR.z + 2.3));
-  Y.items.push(IT('tractor', 'Tractor', () => Y.verb('tractor'), TR.x, 1.2, TR.z, 1.8, 2.4, 3.6, [TR.x, 2.7, TR.z]));
+  // Jacob's tractor, shared with the road (shared/tractor.js); it faces north (-z), so the model, built facing +z, turns round
+  const TR = YARD.tractor, model = buildTractor(THREE, { maxAniso: Y.renderer ? Y.renderer.capabilities.getMaxAnisotropy() : 8 });
+  const g = model.group; g.rotation.y = Math.PI; g.position.set(TR.x, 0, TR.z); Y.scene.add(g);
+  model.milk.visible = false; model.load.visible = false;
+  Y.updaters.push((dt) => model.update(dt, { running: model.running }));
+  Y.tractor = { group: g, model, can: model.milk, strap: model.load, engineAt: new THREE.Vector3(TR.x, 1.1, TR.z - 1.2), wires: new THREE.Vector3(TR.x + 0.3, 0.9, TR.z - 0.6) };
+  Y.colliders.push(rectC(TR.x - 1.25, TR.z - 2.1, TR.x + 1.25, TR.z + 2.25));
+  Y.items.push(IT('tractor', 'Tractor', () => Y.verb('tractor'), TR.x, 1.2, TR.z, 1.8, 2.4, 3.8, [TR.x, 2.7, TR.z]));
   Y.hitTargets.push({ id: 'tractor', pos: new THREE.Vector3(TR.x, 0.9, TR.z), r: 1.3, metal: true });
 }
 
@@ -4931,6 +4898,7 @@ const YACTS = {
     if (area.Y.jaws.jaws.some(j => j.state === 'tractor')) beats.push(J('Oi! Get off my ignition wiring!'));
     if (Y.dung >= 6 && Y.milked) return [...beats, DO(() => leaveForTown())];
     beats.push(J(state.flags.tractorOnce ? 'Not yet.' : 'Rusted, held together with prayers, determination and tape. The windshield’s a memory.'));
+    if (!state.flags.tractorOnce) beats.push({ who: 'jacob', text: 'Shielding on the engine and round the seat, so the flies can’t get in my head. Leather on the wheels. The stack spits phosphor. She’s ugly, and she’s mine.', prov: ['X', 'the tractor’s refits: new in this build'] });
     state.flags.tractorOnce = true;
     if (Y.dung < 6) beats.push(J('Not without the dung. That bin’s the water tax.'));
     if (!Y.milked) beats.push(J('And the milk. The old girl won’t milk herself.'));
@@ -6054,7 +6022,7 @@ function goInside() {
   setTimeout(toShack, reduceMotion ? 50 : 700);
 }
 function leaveForTown() {
-  say([J('Guard the fort, Rustbucket.'), STAGE('The bull does not acknowledge him.'), DO(() => { sfx.engine(); rumble(0.6, 0.8, 1500); for (let i = 0; i < 30; i++) setTimeout(() => area.Y.smokeP.emit(YARD.tractor.x - 0.12, 2.15, YARD.tractor.z - 1.0, { vy: 1.2, vx: rand(-0.2, 0.2), life: 3, size: 0.2, size1: 1.4, alpha: 0.6, color: [0.12, 0.11, 0.1], drag: 0.6 }), i * 80); }), WAIT(2.2), DO(toRoad)]);
+  say([J('Guard the fort, Rustbucket.'), STAGE('The bull does not acknowledge him.'), DO(() => { sfx.engine(); rumble(0.6, 0.8, 1500); const t = area.Y.tractor.model; t.running = true; t.spit(60); }), WAIT(2.2), DO(toRoad)]);
 }
 // out of the north gate: the road to Bleak Flats is its own page, and takes the clock and the load with it
 function toRoad() {

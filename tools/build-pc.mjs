@@ -39,6 +39,6 @@ async function modulePage(html, entry, keep, out) {
   writeFileSync(join(out_, out), page.replace(tag, () => head + '<script>' + inline(outputFiles[0].text) + '</script>'));
 }
 const out_ = out;
-await modulePage('yard.html', 'yard/main.js', (k) => k.startsWith('tex/dirt_') && !k.endsWith('_r.jpg'), YARD);
+await modulePage('yard.html', 'yard/main.js', (k) => /^tex\/(dirt|iron|ironpaint|tin|canvas|leather)_[cn]\.jpg$/.test(k), YARD);   // the dirt, and the tractor's
 await modulePage('road.html', 'road/main.js', (k) => k.startsWith('tex/') && /^tex\/(dirt|iron|ironpaint|boards|tin|frame|canvas|leather)_[cn]\.jpg$/.test(k), ROAD);
 for (const f of [SHACK, YARD, ROAD]) console.log(`${f}  ${(statSync(join(out, f)).size / 1048576).toFixed(1)} MB`);

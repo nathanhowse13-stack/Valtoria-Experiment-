@@ -15,6 +15,7 @@ game/
   road.html         The Road to Bleak Flats: markup and styles
   road/main.js      the road's source: the Red Waste, the tractor, the Field Guide's hazards, survival
   shared/notebook.js  the idea notebook all three pages write to
+  shared/tractor.js   Jacob's tractor, one model for the yard and the road
 tools/build-pc.mjs  builds the single-file PC copies (npm install && npm run build:pc)
 ```
 
@@ -51,8 +52,25 @@ the first shack's tank and the seep in the last rock shelter.
 
 The road's systems came from the *Road Relic v0.5* prototype: the route length, pacing, power line,
 pipeline, ruins, vitals and six finds. They were rebuilt in the game's own renderer, controls, saves,
-tags and notebook. One naming difference: the prototype called the tractor Rustbucket, but in the yard
-Rustbucket is Jacob's bull. Here the tractor is just the tractor until the author decides.
+tags and notebook. Rustbucket is Jacob's bull; the tractor has no name.
+
+### The tractor
+
+`game/shared/tractor.js` builds the one tractor both pages use: an old long-bonnet two-cylinder,
+its paint long since gone to brown and rust, kept alive by salvage. It has:
+- riveted anima shielding over the engine, round the seat and on the back
+- a stack rebuilt to spit phosphorus, with a spark cage and a feed line from a little hopper
+- a windscreen cracked from a stone strike and missing a corner, and no side windows
+- a single patched seat
+- wheels rebuilt from layered, strapped and riveted salvaged leather, no two alike
+- a radio whip with the set under the roof
+- a small water canister with a tap
+- a lidded compartment on the back
+
+On the road these are things to use. The shielding is why flies can't get into Jacob's head while
+he's aboard. F drinks from the canister at the wheel, and the canister refills at a water source if
+the tractor is parked nearby. The compartment opens, and R works the radio. All of it is tagged
+Experimental.
 
 ## Playing locally
 
