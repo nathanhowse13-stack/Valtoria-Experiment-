@@ -16,7 +16,7 @@ game/
   road/core.js      the road's shared state, materials, field notes and finds
   road/land.js      the land: the fork, the canyon, the old main road, the salt pans, the pipeline, the outskirts, the walls
   road/life.js      what lives on it: gums, spinifex, striders, boars, the wreck and its swarm, and the rest
-  road/mainroad.js  along the old main road: the falling power line, Tally Bore, burst mains, crows and hounds
+  road/mainroad.js  along the old main road: the falling power line, Tally Bore, burst mains, Scream-Peas, the escarpment's Drop-Stalkers
   road/caves.js     three shallow caves to walk into, and the relics in them
   road/main.js      the player: the tractor and Jacob on foot, the camera, HUD, notebook, sound, survival
   shared/notebook.js  the idea notebook all three pages write to
@@ -60,7 +60,7 @@ Iron-Bark Sentinel, Argus-Bushes, compass-weed, thorny-devils and jaw-jaws.
 
 ### The old main road
 
-Everything along it is Experimental, new on the road.
+The ruins along it are Experimental, new on the road. What lives there is the Field Guide's.
 
 - **The power line** has a pole every 38 m from the gate to the walls, on the road's west side.
   About half stand. The rest lean, have snapped (a stump, with the top lying beside it), or lie in
@@ -81,17 +81,26 @@ Everything along it is Experimental, new on the road.
   - **The rest:** a windmill still turning with a third of its blades gone, a water tower down on
     buckled legs, a car up on blocks being stripped by jaw-jaws, a half-fallen fence, a rainwater
     tank, and a Gallows-Gum, the best shade in town.
-- **Things to see** along the road:
-  - **Tally-Crows** sit in rows on the sagging wires, every head turning as you pass. They lift and
-    circle when you come close, then settle again behind you.
-  - **Hollow-Hounds** keep pace out in the scrub and are only ever there at the corner of the eye.
-    Look straight at one and it isn't there.
-  - **Others:** razor-back boars rooting by the road, thorny-devils on the warm seal, and the strider
-    out on the pans.
+- **Things to see** along the road, all from the Field Guide and native to the country round
+  Bleak Flats:
+  - **Scream-Peas** (Guide; Chapter One) are wretched, parasitic vines. Here they've taken the dead
+    poles, hang in rows off the sagging wires, run along Tally Bore's back fence, and climb the walls
+    of Bleak Flats either side of the gate, where the Guide puts them.
+    - By day their mouth-like pods are shut against the light, and every lidded flower turns to watch
+      you pass. The eyes open when you come close; the eyes are the Farm of Rust sketch's look.
+    - Put your face to one and a pod splits and screams.
+    - Before seven, the last of them are still screaming in the shade.
+  - **Drop-Stalkers** (Guide) live on the escarpment above the road; a cliff of overhangs is their
+    country. Two of them, furred the colour of the strata, keep pace with anything on the road,
+    ledge to ledge. Every time you look up, the one you're looking at is pressed flat to the rock
+    and still. Walk under the cliff (by the windmill, say) and they come along the ledges to be over
+    you. Look up and hold one's eye and it won't drop.
+  - **Others:** razor-back boars rooting by the road (Chapter Two), thorny-devils on the warm seal
+    (the Farm sketch), and the strider out on the pans.
 
-  The crows and the hounds are the game's own animals, made in the spirit of the Field Guide (the
-  Waste's life is made of fears, not ordinary outback animals). They're tagged Experimental, not
-  Canon. There are seventeen finds now, three of them on the main road.
+  These replace the first pass's invented crows and hounds, keeping their ideas (rows on the wires,
+  every head turning; something pacing you that's never there when you look) with the Guide's own
+  species. There are seventeen finds now, three of them on the main road.
 
 ### The caves
 

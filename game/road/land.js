@@ -170,7 +170,7 @@ export function buildLand() {
   buildCanyon(); buildEscarpment(); buildSaltPans(); buildTransmissionLine(); buildPipeline(); buildMesas(); buildOutskirts(); buildBleakFlats(); buildSigns();
 }
 
-const _c = new THREE.Color(), _t = new THREE.Color();
+const _c = new THREE.Color(), _t = new THREE.Color(), _e3 = new THREE.Vector3();
 function buildChunk(i) {
   const g = new THREE.Group(), z0 = i * 100, R = rng(9001 + (i + 5) * 7919);
   const NX = 132, NZ = 20, pos = [], col = [], uv = [], idx = [];
@@ -382,14 +382,19 @@ function buildCanyon() {
 }
 
 // ---------- the mesa's eastern escarpment: a banded cliff the main road runs under, scree at its foot ----------
+// a point on its face: v = 0 at the foot, 1 at the rim; push = how far out from the rock
+export function escarpmentPoint(z, v, out = new THREE.Vector3(), push = 0) {
+  const ax = canyonAxisX(clamp(z, CANYON.z0, CANYON.z1)), cw = canyonWeight(z), y = v * (CANYON.H + 2) * cw - 0.6, ledge = Math.round(Math.sin(y * 0.5 + z * 0.013) * 1.4) / 1.4;
+  const d = mesaOuter(-1) + 1.4 + (1 - v) * 5.6 + 0.9 * Math.sin(z * 0.11 + y * 0.35) + 0.5 * ledge;
+  return out.set(ax - d - push, y, z);
+}
 function buildEscarpment() {
   const pos = [], col = [], uv = [], idx = [], ROWS = Math.ceil((CANYON.z1 - CANYON.z0 + 40) / 2), COLS = 18, o = mesaOuter(-1);
   for (let r = 0; r <= ROWS; r++) {
     const z = CANYON.z0 - 20 + r * 2, ax = canyonAxisX(clamp(z, CANYON.z0, CANYON.z1)), cw = canyonWeight(z);
     for (let c = 0; c <= COLS; c++) {
-      const v = c / COLS, y = v * (CANYON.H + 2) * cw - 0.6, ledge = Math.round(Math.sin(y * 0.5 + z * 0.013) * 1.4) / 1.4;
-      const d = o + 1.4 + (1 - v) * 5.6 + 0.9 * Math.sin(z * 0.11 + y * 0.35) + 0.5 * ledge;
-      pos.push(ax - d, y, z); uv.push(z / 4, y / 4);
+      const v = c / COLS, { x, y } = escarpmentPoint(z, v, _e3);
+      pos.push(x, y, z); uv.push(z / 4, y / 4);
       strataColour(y, z, _c).multiplyScalar(1.2 * (0.72 + 0.28 * smooth(0, 10, y))); col.push(_c.r, _c.g, _c.b);
     }
   }

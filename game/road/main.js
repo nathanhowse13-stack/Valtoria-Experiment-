@@ -127,7 +127,7 @@ const sfx = {
   radio: () => { noiseHit({ f: 2400, q: 0.6, dur: 1.4, gain: 0.08 }); tone({ type: 'square', f: 880, dur: 0.06, gain: 0.02 }); },
   drip: () => tone({ f: 1500 + Math.random() * 500, f2: 800, dur: 0.12, gain: 0.03 }),
   zap: (v = 1) => { for (let i = 0; i < 5; i++) noiseHit({ type: 'highpass', f: 2500 + Math.random() * 3000, q: 2, dur: 0.04 + Math.random() * 0.05, gain: 0.22 * v, delay: i * 0.035 * Math.random() * 3 }); tone({ type: 'square', f: 100, dur: 0.18, gain: 0.03 * v }); },   // a live wire arcing
-  caw: () => { for (const [d, f] of [[0, 640], [0.28, 590], [0.62, 610]]) tone({ type: 'sawtooth', f, f2: f * 0.7, dur: 0.22, gain: 0.025, delay: d }); },
+  scream: (v = 1) => { tone({ type: 'sawtooth', f: 1500, f2: 640, dur: 0.75, gain: 0.05 * v }); tone({ type: 'square', f: 2100, f2: 1150, dur: 0.55, gain: 0.018 * v, delay: 0.06 }); noiseHit({ type: 'highpass', f: 3200, dur: 0.5, gain: 0.1 * v }); },   // a Scream-Pea pod splitting open
 };
 
 // ---------- the HUD ----------

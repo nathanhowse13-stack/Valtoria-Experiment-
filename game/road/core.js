@@ -52,15 +52,14 @@ export const SPECIES = {
   flies: { name: 'Gossip-Flies', tag: 'C', src: GUIDE + '; ' + CH2, fact: 'Fist-sized, oil-slick wings. They pick up fears and whisper them back; a swarm doesn’t just annoy, it mines a mind.', counter: 'Outrun the small ones. A swarm breaks apart in sulphur: Sulphur-Salts in the intake, then redline it.' },
   strider: { name: 'Salt-Strider', tag: 'C', src: GUIDE + '; the look and the blink are ' + CH2, fact: 'Raptor-like, furred the colour of sun-bleached bone, over eight feet tall, a tail like a rudder. It moves by folding space, fifty feet at a blink. It hunts the open flats.', counter: 'Hold a constant, boring speed. Don’t speed up. Don’t slow down. Let it weigh you and find you too metallic.' },
   boar: { name: 'Razor-Back Boar', tag: 'C', src: CH2, fact: 'Bristles like blades down the spine. One running scared means something spooked it from the other direction.', counter: '' },
-  stalker: { name: 'Drop-Stalker', tag: 'C', src: GUIDE, fact: 'A leopard-sized, heavily muscled koala-like predator that ambushes travellers from above, around rocky overhangs.', counter: 'Listen for the clicking. Look up and hold its eye; it won’t drop on something that’s watching it.' },
+  stalker: { name: 'Drop-Stalker', tag: 'C', src: GUIDE, fact: 'A leopard-sized, heavily muscled koala-like predator that ambushes travellers from above, around rocky overhangs.', counter: 'Listen for the clicking. Look up and hold its eye; it won’t drop on something that’s watching it. Under the escarpment by the old main road they pace you ledge to ledge, and every time you look, one is pressed flat to the rock.' },
   wattle: { name: 'Judas-Wattle', tag: 'C', src: GUIDE, fact: 'Its pollen, the Golden Haze, turns the red world green and promises water.', counter: 'Keep to the road. Whatever’s shining up ahead isn’t there.' },
   argus: { name: 'Argus-Bush', tag: 'C', src: GUIDE, fact: 'Woody pods that open into eyes. It records fear and memory.', counter: 'Don’t linger, and don’t sleep near one.' },
   truthrot: { name: 'Truth-Rot', tag: 'C', src: GUIDE, fact: 'A fungus that glows green when someone lies near it. In the dark of a cave it lights the walls.', counter: '' },
   devil: { name: 'Thorny-Devil', tag: 'P', src: FARM, fact: 'A spiked lizard that basks on warm rock. Anything thrown at one goes straight back where it came from.', counter: '' },
   jaws: { name: 'Jaw-Jaws', tag: 'P', src: FARM, fact: 'Wedge-headed copper strippers in green-gone shells. They gut wrecks for wire.', counter: 'Keep them off the tractor’s ignition.' },
   webs: { name: 'Tunnel-Webs', tag: 'P', src: FARM, fact: 'Sheet webs across dark places, and what lives in them bites.', counter: 'Move slowly and brush them aside. Blunder through and you’ll be bitten.' },
-  crows: { name: 'Tally-Crows', tag: 'X', src: NEW + ', a fear-made animal in the spirit of the Field Guide', fact: 'Black birds in rows along the wires of the old power line, every head turning as you pass. They lift when you come close, circle, and settle again behind you. They count.', counter: 'Nothing to be done about them. Don’t count back.' },
-  hounds: { name: 'Hollow-Hounds', tag: 'X', src: NEW + ', a fear-made animal in the spirit of the Field Guide', fact: 'Lean, ribby dogs that keep pace with travellers out in the scrub along the main road, and are only ever there at the corner of the eye. Look straight at one and there’s nothing. They never come closer. They just follow.', counter: 'Keep your eyes on the road.' },
+  peas: { name: 'Scream-Peas', tag: 'C', src: GUIDE + '; ' + CH1, fact: 'Wretched, parasitic vines with shrivelled, mouth-like pods. They scream through the night and fall silent at sunrise, the pods snapping shut against the light. The Guide has them on the perimeter of Bleak Flats; along the old main road they’ve taken the dead poles, the sagging wires and the fences.', counter: 'Pass them by day, and keep your face away from the pods. The lidded flowers that turn to watch you (the Farm of Rust sketch’s look) only watch.' },
   ruin: { name: 'Ruins on the road', tag: 'X', src: NEW, fact: 'Shacks and camps people walked away from. Shade without branches, and sometimes a little water.', counter: '' },
 };
 export function meet(k) { if (S.met[k]) return; S.met[k] = true; hooks.toast(`Field notes · ${SPECIES[k].name}`); }
@@ -187,8 +186,12 @@ export function initMaterials(maxAniso) {
     reflector: new THREE.MeshStandardMaterial({ color: 0x8a1410, emissive: 0x3a0402, roughness: 0.3 }),
     pole: std('frame', { color: 0x8a7a68, roughness: 0.95 }),                                        // power poles, grey with age
     insulator: new THREE.MeshStandardMaterial({ color: 0x6f9a7c, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }),   // bottle-green glass
-    crow: new THREE.MeshStandardMaterial({ color: 0x141212, roughness: 0.45, metalness: 0.25, side: THREE.DoubleSide }),
-    hound: new THREE.MeshStandardMaterial({ color: 0x5a4a40, roughness: 0.9, transparent: true, opacity: 0 }),
+    furRock: std('canvas', { color: 0xb8664a, roughness: 1 }),                                     // a Drop-Stalker that lives on the escarpment, the colour of its strata
+    peaVine: new THREE.MeshStandardMaterial({ color: 0x5a5a26, roughness: 0.85 }),                    // Scream-Pea vine: a sick, dusty green against the rust
+    peaPetal: new THREE.MeshStandardMaterial({ color: 0x8e0f14, roughness: 0.55, side: THREE.DoubleSide }),   // arterial red
+    peaEye: new THREE.MeshStandardMaterial({ color: 0xe6dcc2, roughness: 0.25 }),
+    peaLid: new THREE.MeshStandardMaterial({ color: 0x4e1612, roughness: 0.7, side: THREE.DoubleSide }),
+    peaPod: new THREE.MeshStandardMaterial({ color: 0x5c2a1c, roughness: 0.85 }),
     brick: new THREE.MeshStandardMaterial({ color: 0x9a5a44, roughness: 0.95, flatShading: true }),
     tank: std('tin', { color: 0xa89a88, roughness: 0.5, metalness: 0.6, side: THREE.DoubleSide }),
   });

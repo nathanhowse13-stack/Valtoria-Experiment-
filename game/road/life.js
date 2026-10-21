@@ -163,23 +163,25 @@ function buildCanyonSpinifex() {
 }
 
 // ---------- the Drop-Stalker: leopard-sized, built like a koala that lifts, waiting on an overhang ----------
-function buildStalker(p, facing, id) {
+export function buildStalker(p, facing, id, fur = M.fur) {
   const g = new THREE.Group(); g.position.copy(p); g.rotation.y = facing; G.scene.add(g);
   const part = (geo, mat, x, y, z, sx = 1, sy = 1, sz = 1) => { const m = mesh(geo, mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz); g.add(m); return m; };
   const S1 = new THREE.SphereGeometry(1, 16, 12);
-  part(S1, M.fur, 0, 0.05, 0, 0.62, 0.48, 0.95); part(S1, M.fur, 0, 0.18, 0.55, 0.62, 0.5, 0.5);
+  part(S1, fur, 0, 0.05, 0, 0.62, 0.48, 0.95); part(S1, fur, 0, 0.18, 0.55, 0.62, 0.5, 0.5);
   const head = new THREE.Group(); head.position.set(0, 0.32, 1.02); g.add(head);
   const hp = (geo, mat, x, y, z, sx, sy, sz) => { const m = mesh(geo, mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz); head.add(m); return m; };
-  hp(S1, M.fur, 0, 0, 0, 0.42, 0.36, 0.4);
-  const ears = [hp(S1, M.fur, -0.36, 0.22, -0.05, 0.22, 0.2, 0.08), hp(S1, M.fur, 0.36, 0.22, -0.05, 0.22, 0.2, 0.08)];
+  hp(S1, fur, 0, 0, 0, 0.42, 0.36, 0.4);
+  const ears = [hp(S1, fur, -0.36, 0.22, -0.05, 0.22, 0.2, 0.08), hp(S1, fur, 0.36, 0.22, -0.05, 0.22, 0.2, 0.08)];
   hp(S1, M.furDark, 0, -0.06, 0.36, 0.13, 0.17, 0.12);
   for (const s of [-1, 1]) hp(S1, M.stalkerEye, s * 0.16, 0.08, 0.32, 0.045, 0.045, 0.03);
   for (const s of [-1, 1]) {
-    part(new THREE.CylinderGeometry(0.12, 0.09, 0.7, 8), M.fur, s * 0.4, -0.25, 0.75).rotation.x = 0.5;
+    part(new THREE.CylinderGeometry(0.12, 0.09, 0.7, 8), fur, s * 0.4, -0.25, 0.75).rotation.x = 0.5;
     for (let c = 0; c < 3; c++) part(new THREE.ConeGeometry(0.025, 0.16, 6), M.claw, s * 0.4 + (c - 1) * 0.05, -0.58, 0.98).rotation.x = 2.2;
-    part(new THREE.CylinderGeometry(0.15, 0.1, 0.6, 8), M.fur, s * 0.42, -0.25, -0.5).rotation.x = -0.3;
+    part(new THREE.CylinderGeometry(0.15, 0.1, 0.6, 8), fur, s * 0.42, -0.25, -0.5).rotation.x = -0.3;
   }
-  W.stalkers.push({ id, g, head, ears, home: p.clone(), state: 'perched', seen: 0, warned: false, cool: 0, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3() });
+  const rec = { id, g, head, ears, home: p.clone(), state: 'perched', seen: 0, warned: false, cool: 0, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3() };
+  W.stalkers.push(rec);
+  return rec;
 }
 function buildOutcrop(x, z) {
   const y = h(x, z), parts = [];
@@ -487,7 +489,7 @@ function updateStalkers(dt, x, z, foot) {
       _to.copy(s.g.position).sub(cam.position); const dist = _to.length(); _to.normalize();
       if (dist < 26 && _fwd.dot(_to) > 0.975) { s.seen += dt; if (s.seen > 1.0) { s.state = 'cowed'; s.cool = 45; hooks.sfx.hiss(); bark('Seen you. Stay up there. Good. Stay.', ['X', 'the counter: ' + NEW]); } }
       else s.seen = Math.max(0, s.seen - dt * 0.5);
-      if (d < 6.5 && s.cool <= 0) { s.state = 'drop'; s.t = 0; s.from.copy(s.g.position); s.to.set(x, h(x, z) + 0.6, z); hooks.sfx.snarl(); }
+      if (d < (s.reach || 6.5) && s.cool <= 0) { s.state = 'drop'; s.t = 0; s.from.copy(s.g.position); s.to.set(x, h(x, z) + 0.6, z); hooks.sfx.snarl(); }
     } else if (s.state === 'drop') {
       s.t += dt / 0.45; const t = Math.min(1, s.t);
       s.g.position.lerpVectors(s.from, s.to, t); s.g.position.y += Math.sin(t * Math.PI) * 1.2;

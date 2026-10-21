@@ -3,24 +3,26 @@
 // line falling down pole by pole (one wire still live, lying across the
 // road), Tally Bore (a hamlet of houses coming apart round a dead
 // pumping station on the pipeline), the pipeline's burst mains spraying
-// (land.js lays the pipe), and things to see: crows in rows along the
-// wires, and hounds out in the scrub that are only ever there at the
-// corner of the eye.
+// (land.js lays the pipe), and what lives along it, all of it from the
+// Field Guide and native to the country round Bleak Flats: Scream-Peas
+// that have taken the dead poles, the sagging wires and the fences,
+// their lidded flowers turning to watch whoever passes; and Drop-Stalkers
+// pacing travellers along the ledges of the escarpment above the road.
 //
-// All of it is new on the road (Experimental). The Field Guide says the
-// Waste's life is made of fears, not ordinary animals; the crows and the
-// hounds are the game's own animals in that spirit, not the Guide's.
+// The road's ruins are new on the road (Experimental). The species are
+// the Guide's (Canon); where they grow and how they pace you is the game's.
 // ============================================================
-import { THREE, TAU, clamp, lerp, smooth, rng, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, glowTexture, placeRelic, NEW } from './core.js';
-import { h, ROUTES, TALLY, RESERVED, nearestRoad } from './land.js';
+import { THREE, TAU, clamp, lerp, smooth, rng, reduceMotion, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, glowTexture, placeRelic, GUIDE, CH1, NEW } from './core.js';
+import { h, ROUTES, TALLY, RESERVED, nearestRoad, CANYON, escarpmentPoint } from './land.js';
+import { buildStalker } from './life.js';
 
 const here = () => S.inTractor ? { x: G.tractor.x, z: G.tractor.z } : { x: P.x, z: P.z };
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _one = new THREE.Vector3(1, 1, 1), _m = new THREE.Matrix4();
 const X = (why) => ['X', why ? why + ': ' + NEW : NEW];
 
 export function reserveMainRoad() { RESERVED.push({ x: TALLY.x, z: TALLY.z + 8, r: 72 }); }
-export function buildMainRoad() { buildPowerLine(); buildTallyBore(); buildCrows(); buildHounds(); buildSprays(); }
-export function updateMainRoad(dt) { updateLiveWire(dt); updateCrows(dt); updateHounds(dt); updateSprays(dt); updateTown(dt); }
+export function buildMainRoad() { buildPowerLine(); buildTallyBore(); buildScreamPeas(); buildCliffStalkers(); buildSprays(); }
+export function updateMainRoad(dt) { updateLiveWire(dt); updateScreamPeas(dt); updateCliffStalkers(dt); updateSprays(dt); updateTown(dt); }
 
 // ---------- the power line: a pole every thirty-eight metres on the west side of the road, from the gate to the walls ----------
 const POLE_H = 8.6;
@@ -63,15 +65,18 @@ function buildPowerLine() {
   for (const p of poles) {
     if (p.state === 'up' || p.state === 'lean') {
       p.upright = true;
-      p.ins = pole(parts, poleMatrix(p.x, p.y, p.z, p.yaw, p.state === 'lean' ? p.tilt : (R() - 0.5) * 0.08), POLE_H);
+      p.m = poleMatrix(p.x, p.y, p.z, p.yaw, p.state === 'lean' ? p.tilt : (R() - 0.5) * 0.08); p.len = POLE_H;
+      p.ins = pole(parts, p.m, POLE_H);
       blockers.push({ x: p.x, z: p.z, r: 0.35 });
     } else if (p.state === 'down') {
       // lying in the dirt; if it fell toward the road (+tilt), its top lies in the road
-      p.ins = pole(parts, poleMatrix(p.x, p.y + 0.16, p.z, p.yaw, p.live ? 1.52 : p.tilt > 0 ? 1.5 : -1.5), POLE_H);
+      p.m = poleMatrix(p.x, p.y + 0.16, p.z, p.yaw, p.live ? 1.52 : p.tilt > 0 ? 1.5 : -1.5); p.len = POLE_H;
+      p.ins = pole(parts, p.m, POLE_H);
       for (let d = 0.6; d < POLE_H - 0.4; d += 1.1) { const sgn = (p.live || p.tilt > 0) ? -1 : 1; blockers.push({ x: p.x + Math.cos(p.yaw) * sgn * d, z: p.z - Math.sin(p.yaw) * sgn * d, r: 0.3 }); }
     } else {
       // snapped: a stump, and the top lying beside it, crossarm and all
-      pole(parts, poleMatrix(p.x, p.y, p.z, p.yaw, (R() - 0.5) * 0.1), 3.1, false);
+      p.m = poleMatrix(p.x, p.y, p.z, p.yaw, (R() - 0.5) * 0.1); p.len = 3.1;
+      pole(parts, p.m, 3.1, false);
       const sgn = p.tilt > 0 ? -1 : 1, bx = p.x + Math.cos(p.yaw) * sgn * 0.7, bz = p.z - Math.sin(p.yaw) * sgn * 0.7;
       p.ins = pole(parts, poleMatrix(bx, h(bx, bz) + 0.16, bz + 0.5, p.yaw + (R() - 0.5) * 0.5, sgn * -1.5), 5.4);
       blockers.push({ x: p.x, z: p.z, r: 0.35 });
@@ -322,122 +327,148 @@ function updateTown(dt) {
   }
 }
 
-// ---------- Tally-Crows: in rows along the wires; every head turns as you pass; they lift, and settle again behind you ----------
-const CROWS = [];
-let crowBody = null, crowWing = null, crowCool = 0;
+// ---------- Scream-Peas: up the dead poles, hanging off the wires, along Tally Bore's fence and the walls of the Flats ----------
+// By day the pods are shut against the light and the vines are quiet (Chapter One); the lidded flowers still turn to
+// watch whoever passes, and open their eyes when you come close (the Farm of Rust sketch's look). Put your face
+// to a pod and it splits and screams.
+const PEAS = { list: [], petal: null, eye: null, pupil: null, lid: null, cool: 0, dawnIn: 1.5 };
 function wirePoint(sp, t, out) { out.copy(sp.a).lerp(sp.b, t); out.y -= sp.sag * Math.sin(Math.PI * t); return out; }
-function buildCrows() {
-  const R = rng(777);
-  W.spans.forEach((sp, i) => {
-    if (i % 3 !== 1 || sp.z < 120) return;
-    const n = 3 + Math.floor(R() * 5);
+const _z = new THREE.Vector3(0, 0, 1), _x = new THREE.Vector3(1, 0, 0), _lq = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+function buildScreamPeas() {
+  const R = rng(919), vines = [], pods = [];
+  const flower = (p, out) => PEAS.list.push({ p: p.clone(), out: out.clone().normalize(), look: out.clone().normalize(), lid: 0, d: 1e9 });
+  const pod = (p, yaw, tilt) => pods.push([new THREE.SphereGeometry(1, 8, 6), new THREE.Matrix4().compose(p, _q.setFromEuler(_e.set(tilt, yaw, 0.3, 'YXZ')), _s.set(0.07, 0.045, 0.17))]);
+  const strand = (pts, r = 0.028) => vines.push([new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(8, pts.length * 3), r, 5, false), new THREE.Matrix4()]);
+  // up the poles, standing or fallen: a vine wound round each, flowers facing out
+  W.poles.forEach((p, i) => {
+    if (i % 2 !== 1 || !p.m) return;
+    const turns = 2 + R() * 2.5, top = (p.state === 'up' || p.state === 'lean' ? 0.45 + R() * 0.5 : 1) * p.len, pts = [];
+    for (let k = 0; k <= 26; k++) { const t = k / 26, a = t * turns * TAU + i; pts.push(new THREE.Vector3(Math.cos(a) * 0.19, t * top, Math.sin(a) * 0.19).applyMatrix4(p.m)); }
+    strand(pts, 0.045);
+    const n = 4 + Math.floor(R() * 4);
     for (let k = 0; k < n; k++) {
-      const home = wirePoint(sp, 0.12 + R() * 0.76, new THREE.Vector3()); home.y += 0.1;
-      CROWS.push({ home, pos: home.clone(), yaw: R() * TAU, state: 'perch', t: 0, c: new THREE.Vector3(), r: 0, ph: R() * TAU, flap: 0, look: R() * TAU });
+      const t = 0.12 + R() * 0.85, a = t * turns * TAU + i + 0.5, local = new THREE.Vector3(Math.cos(a) * 0.36, t * top, Math.sin(a) * 0.36);
+      const wp = local.clone().applyMatrix4(p.m), out = new THREE.Vector3(Math.cos(a), 0.25, Math.sin(a)).transformDirection(p.m);
+      if (wp.y < h(wp.x, wp.z) + 0.15) wp.y = h(wp.x, wp.z) + 0.15;
+      flower(wp, out); if (R() < 0.7) pod(local.set(Math.cos(a + 0.6) * 0.28, t * top - 0.25, Math.sin(a + 0.6) * 0.28).applyMatrix4(p.m), R() * 3, R() - 0.5);
     }
   });
-  if (!CROWS.length) return;
-  const body = merge([
-    [new THREE.SphereGeometry(1, 10, 8), MX(0, 0, 0, 0, 0, 0, 0.085, 0.08, 0.16)],
-    [new THREE.SphereGeometry(0.058, 10, 8), MX(0, 0.07, 0.14)],
-    [new THREE.ConeGeometry(0.02, 0.08, 6), MX(0, 0.06, 0.22, Math.PI / 2, 0, 0)],
-    [new THREE.BoxGeometry(0.09, 0.015, 0.14), MX(0, 0.0, -0.2, 0.25, 0, 0)],
-  ]);
-  const wing = new THREE.BoxGeometry(0.24, 0.012, 0.12); wing.translate(0.12, 0, 0);
-  crowBody = new THREE.InstancedMesh(body, M.crow, CROWS.length); crowWing = new THREE.InstancedMesh(wing, M.crow, CROWS.length * 2);
-  crowBody.frustumCulled = crowWing.frustumCulled = false; crowBody.castShadow = true;
-  G.scene.add(crowBody, crowWing);
-  CROWS.forEach((c, i) => poseCrow(c, i));
-}
-const _sh = new THREE.Vector3(), _sc = new THREE.Vector3();
-function poseCrow(c, i) {
-  crowBody.setMatrixAt(i, _m.compose(c.pos, _q.setFromEuler(_e.set(c.state === 'perch' ? 0 : -0.1, c.yaw, 0, 'YXZ')), _one));
-  const folded = c.state === 'perch';
-  for (const side of [1, -1]) {
-    _sh.set(side * 0.05, 0.03, 0.02).applyAxisAngle(_w.set(0, 1, 0), c.yaw).add(c.pos);
-    _sc.set(side * (folded ? 0.5 : 1), 1, 1);
-    crowWing.setMatrixAt(i * 2 + (side > 0 ? 0 : 1), _m.compose(_sh, _q.setFromEuler(_e.set(0, c.yaw + (folded ? side * -0.3 : 0), folded ? 0 : -side * c.flap, 'YXZ')), _sc));
+  // along the sagging wires: tendrils hung off them, flowers at the ends, in rows
+  W.spans.forEach((sp, i) => {
+    if (i % 2 !== 0 || sp.z < 140) return;
+    const n = 3 + Math.floor(R() * 5), run = [];
+    for (let k = 0; k <= 12; k++) run.push(wirePoint(sp, 0.1 + k / 12 * 0.8, new THREE.Vector3()).add(_p.set(0, -0.04, 0)));
+    strand(run, 0.03);
+    for (let k = 0; k < n; k++) {
+      const top = wirePoint(sp, 0.12 + R() * 0.76, new THREE.Vector3()), len = 0.35 + R() * 0.9, end = top.clone().add(_p.set((R() - 0.5) * 0.3, -len, (R() - 0.5) * 0.3));
+      strand([top, top.clone().lerp(end, 0.5).add(_p.set((R() - 0.5) * 0.2, 0, (R() - 0.5) * 0.2)), end], 0.022);
+      flower(end, _s.set(R() - 0.5, -0.4, R() - 0.5));
+      if (R() < 0.5) pod(top.clone().lerp(end, 0.4), R() * 3, 1.3);
+    }
+  });
+  // Tally Bore's back fence, half of it down
+  { const T = TALLY, pts = [];
+    for (let z = T.z - 44; z < T.z + 48; z += 1.6) { const x = T.x + 17 + Math.sin(z * 0.2) * 0.3 + Math.sin(z * 1.3) * 0.12; pts.push(new THREE.Vector3(x, h(x, z) + 0.35 + 0.35 * Math.sin(z * 0.7), z)); if (Math.sin(z * 0.13) > 0.75) { if (pts.length > 2) strand(pts.splice(0)); else pts.length = 0; } }
+    if (pts.length > 2) strand(pts);
+    for (let z = T.z - 42; z < T.z + 46; z += 2.6 + R() * 2) { if (Math.sin(z * 0.13) > 0.72) continue; const x = T.x + 17.2, p = new THREE.Vector3(x, h(x, z) + 0.45 + R() * 0.5, z); flower(p, _s.set(-1, 0.2, (R() - 0.5) * 0.6)); if (R() < 0.6) pod(p.clone().add(_p.set(0.1, -0.2, 0.3)), R() * 3, 0.2); }
   }
+  // the walls of Bleak Flats either side of the gate, where the Guide has them
+  for (let a = -0.3; a <= 0.3; a += 0.0125) {
+    if (Math.abs(a) < 0.045) continue;
+    const cx = 0, cz = 2015, rad = 178, x = cx + Math.sin(a) * (rad - 0.25), z = cz - Math.cos(a) * (rad - 0.25), y = h(x, z) - 0.5;
+    const low = 0.6 + R() * 1.2, high = low + 1 + R() * 4, pts = [];
+    for (let k = 0; k <= 6; k++) { const t = k / 6; pts.push(new THREE.Vector3(x + Math.cos(a) * Math.sin(t * 9 + a * 50) * 0.3, y + lerp(low, high, t), z + Math.sin(a) * Math.sin(t * 9) * 0.3)); }
+    strand(pts, 0.035);
+    if (R() < 0.75) { const p = pts[2 + Math.floor(R() * 4)].clone(); p.z -= 0.15; flower(p, _s.set(-Math.sin(a) * 0.4, 0, -1)); }
+    if (R() < 0.6) pod(pts[1].clone().add(_p.set(0, 0, -0.12)), a, 0.4);
+  }
+  G.scene.add(mesh(merge(vines), M.peaVine, { cast: false }));
+  G.scene.add(mesh(merge(pods), M.peaPod, { cast: false }));
+  // the flowers: four instanced parts, posed each frame for the ones near enough to see
+  const n = PEAS.list.length, inst = (geo, mat) => { const im = new THREE.InstancedMesh(geo, mat, n); im.frustumCulled = false; G.scene.add(im); return im; };
+  // a flower the size of a hand: a cup of five arterial-red petals round a lidded eye
+  const cup = new THREE.ConeGeometry(0.22, 0.2, 5, 1, true); cup.rotateX(-Math.PI / 2); cup.translate(0, 0, -0.02);
+  const lid = new THREE.SphereGeometry(0.112, 14, 7, 0, TAU, 0, Math.PI / 2);
+  PEAS.petal = inst(cup, M.peaPetal); PEAS.eye = inst(new THREE.SphereGeometry(0.105, 14, 10), M.peaEye); PEAS.pupil = inst(new THREE.SphereGeometry(0.05, 12, 8), M.pupil); PEAS.lid = inst(lid, M.peaLid);
+  PEAS.list.forEach((f, i) => poseFlower(f, i));
+  PEAS.petal.instanceMatrix.needsUpdate = PEAS.eye.instanceMatrix.needsUpdate = PEAS.pupil.instanceMatrix.needsUpdate = PEAS.lid.instanceMatrix.needsUpdate = true;
+  W.peas = PEAS;
 }
-function updateCrows(dt) {
-  if (!CROWS.length || G.area !== 'out') return;
-  const p = here(), reach = S.inTractor ? 16 : 9;
-  crowCool = Math.max(0, crowCool - dt);
-  let lifted = 0, moved = false;
-  CROWS.forEach((c, i) => {
-    const d = Math.hypot(c.home.x - p.x, c.home.z - p.z);
-    if (c.state === 'perch') {
-      if (d > 220) return;
-      if (d < reach) { c.state = 'fly'; c.t = 0; c.c.set(c.home.x + (Math.random() - 0.5) * 12, c.home.y + 5 + Math.random() * 6, c.home.z + (Math.random() - 0.5) * 12); c.r = 5 + Math.random() * 7; c.ph = Math.atan2(c.pos.z - c.c.z, c.pos.x - c.c.x); lifted++; }
-      else { const want = Math.atan2(p.x - c.pos.x, p.z - c.pos.z); c.yaw += Math.atan2(Math.sin(want - c.yaw), Math.cos(want - c.yaw)) * clamp(dt * 3, 0, 1); }   // every head turns to watch
-    } else if (c.state === 'fly') {
-      c.t += dt; c.ph += dt * (0.8 + 4 / c.r);
-      _v.set(c.c.x + Math.cos(c.ph) * c.r, c.c.y + Math.sin(c.t * 1.3) * 0.8, c.c.z + Math.sin(c.ph) * c.r);
-      c.pos.lerp(_v, clamp(dt * 2, 0, 1)); c.yaw = Math.atan2(-Math.sin(c.ph), Math.cos(c.ph));
-      c.flap = Math.sin(G.time * 24 + i) * 0.9;
-      if (c.t > 7 && d > reach + 12) c.state = 'land';
-    } else {
-      c.pos.lerp(c.home, clamp(dt * 1.6, 0, 1)); c.flap = Math.sin(G.time * 18 + i) * 0.5;
-      c.yaw = Math.atan2(c.home.x - c.pos.x, c.home.z - c.pos.z) || c.yaw;
-      if (c.pos.distanceTo(c.home) < 0.06) { c.pos.copy(c.home); c.state = 'perch'; }
-    }
-    poseCrow(c, i); moved = true;
+function poseFlower(f, i) {
+  _q.setFromUnitVectors(_z, f.look);
+  PEAS.petal.setMatrixAt(i, _m.compose(f.p, _q, _one));
+  PEAS.eye.setMatrixAt(i, _m.compose(f.p, _q, _one));
+  _p.copy(f.look).multiplyScalar(0.085).add(f.p);
+  PEAS.pupil.setMatrixAt(i, _m.compose(_p, _q, _s.set(1, 1, 0.45)));
+  _lq.setFromAxisAngle(_x, lerp(Math.PI / 2, -0.55, f.lid));                // closed, the dome faces forward over the eye; open, it rolls back
+  PEAS.lid.setMatrixAt(i, _m.compose(f.p, _q.clone().multiply(_lq), _one));
+}
+function updateScreamPeas(dt) {
+  if (!PEAS.list.length || G.area !== 'out') return;
+  const cam = G.camera.position, p = here(), foot = !S.inTractor;
+  PEAS.cool = Math.max(0, PEAS.cool - dt);
+  let near = 1e9, touched = null, any = false;
+  PEAS.list.forEach((f, i) => {
+    const dx = cam.x - f.p.x, dz = cam.z - f.p.z;
+    if (Math.abs(dz) > 80 || Math.abs(dx) > 80) return;
+    const d = Math.hypot(dx, dz); f.d = d; near = Math.min(near, d);
+    // every flower turns to watch, and the eyes open as he comes close
+    _p.set(dx, cam.y - f.p.y, dz).normalize();
+    f.look.lerp(d < 45 ? _p : f.out, clamp(dt * (d < 45 ? 2.5 : 0.5), 0, 1)).normalize();
+    f.lid = lerp(f.lid, d < 9 ? 1 : 0, clamp(dt * 3, 0, 1));
+    if (foot && Math.hypot(p.x - f.p.x, p.z - f.p.z) < 1.3 && Math.abs(cam.y - f.p.y) < 1.6) touched = f;
+    poseFlower(f, i); any = true;
   });
-  if (moved) { crowBody.instanceMatrix.needsUpdate = true; crowWing.instanceMatrix.needsUpdate = true; }
-  if (lifted >= 2 && crowCool <= 0) {
-    crowCool = 6; hooks.sfx.caw(); meet('crows');
-    once('crows', 'Tally-Crows. Rows of them on the wires, and every head turned to watch me come. Like they’re counting. They are counting.', X('the crows'));
-    if (!S.inTractor) S.stress = Math.min(100, S.stress + 3);
+  if (any) PEAS.petal.instanceMatrix.needsUpdate = PEAS.eye.instanceMatrix.needsUpdate = PEAS.pupil.instanceMatrix.needsUpdate = PEAS.lid.instanceMatrix.needsUpdate = true;
+  if (near < 14) { meet('peas'); once('peas', 'Scream-Peas. All the way up the dead pole and along the wire. Pods shut tight against the light, quiet as they ever get. And every flower turned to watch me come.', ['C', GUIDE + '; quiet by day: ' + CH1]); }
+  // too close to a pod, and it wakes
+  if (touched && PEAS.cool <= 0) {
+    PEAS.cool = 8; hooks.sfx.scream(1); S.stress = Math.min(100, S.stress + 12); if (!reduceMotion) P.shake = 0.03;
+    bark('A pod split open a hand’s width from my face and screamed. In broad daylight. I must have woken it.', X('waking a pod by day'));
+  }
+  // the last of the night's screaming, still going in the shade at dawn
+  if ((S.time / 3600) % 24 < 7 && near < 60) {
+    PEAS.dawnIn -= dt;
+    if (PEAS.dawnIn <= 0) { PEAS.dawnIn = 5 + Math.random() * 7; hooks.sfx.scream(clamp(1 - near / 60, 0.15, 0.6)); once('peas-dawn', 'The last of the Scream-Peas, still at it in the shade. They’ll shut up when the sun gets to them.', ['C', CH1]); }
   }
 }
 
-// ---------- Hollow-Hounds: keeping pace out in the scrub, and only ever there at the corner of the eye ----------
-const HOUNDS = [];
-function buildHounds() {
-  const R = rng(321);
-  for (let k = 0; k < 3; k++) {
-    const mat = M.hound.clone(), g = new THREE.Group(); g.visible = false; G.scene.add(g);
-    const add = (geo, x, y, z, sx = 1, sy = sx, sz = sx, rx = 0) => { const m = mesh(geo, mat, { cast: false }); m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.x = rx; g.add(m); return m; };
-    const S1 = new THREE.SphereGeometry(1, 10, 8);
-    add(S1, 0, 0.74, -0.05, 0.17, 0.2, 0.55);                                   // a lean, ribby body
-    add(S1, 0, 0.8, 0.32, 0.2, 0.25, 0.26);
-    add(new THREE.CylinderGeometry(0.07, 0.1, 0.4, 7), 0, 0.98, 0.5, 1, 1, 1, -0.7);
-    add(S1, 0, 1.12, 0.66, 0.1, 0.11, 0.17);
-    add(new THREE.ConeGeometry(0.06, 0.24, 7), 0, 1.08, 0.86, 1, 1, 1, Math.PI / 2);
-    for (const s of [-1, 1]) add(new THREE.ConeGeometry(0.04, 0.14, 5), s * 0.06, 1.24, 0.6);
-    add(new THREE.CylinderGeometry(0.02, 0.035, 0.55, 5), 0, 0.72, -0.62, 1, 1, 1, 0.9);
-    const legs = [];
-    for (const [sx, sz] of [[-1, 0.32], [1, 0.32], [-1, -0.4], [1, -0.4]]) { const hip = new THREE.Group(); hip.position.set(sx * 0.1, 0.72, sz); g.add(hip); const l = mesh(new THREE.CylinderGeometry(0.03, 0.022, 0.72, 5), mat, { cast: false }); l.position.y = -0.36; hip.add(l); legs.push(hip); }
-    HOUNDS.push({ g, mat, legs, x: 0, z: 0, yaw: 0, side: k === 1 ? -1 : 1, ahead: 42 + k * 9, lat: 30 + R() * 10, op: 0, t: R() * 5, active: false });
-    W.hounds = HOUNDS;
+// ---------- Drop-Stalkers on the escarpment: pacing travellers on the old main road, ledge to ledge ----------
+// The Guide puts them round rocky overhangs; this escarpment is all overhang. Two of them keep pace with anything on the
+// road below, and every time you look up, the one you're looking at is pressed flat to the rock, the colour of it.
+// Walk under the cliff and they come along the ledges to be over you. Hold one's eye and it won't drop.
+const CLIFF = [];
+function buildCliffStalkers() {
+  for (const [z, v, ahead] of [[470, 0.24, 24], [560, 0.4, -16]]) {
+    const home = escarpmentPoint(z, v, new THREE.Vector3(), 0.7); home.y += 0.55;
+    const s = buildStalker(home, -Math.PI / 2, 'cliff' + z, M.furRock);
+    s.cliff = { z, v, ahead }; s.moved = 0; s.flat = 0; s.reach = 10.5;            // a ledge ten metres up the cliff is a long leap out from it
+    CLIFF.push(s);
   }
 }
-function updateHounds(dt) {
-  const p = here(), n = nearestRoad(p.x, p.z, 1);
-  const zone = G.area === 'out' && n.s && n.d < 40 && ((n.s.route === 'main' && p.z > 260) || (n.s.route === 'north' && p.z < 1240));
-  const cam = G.camera; cam.getWorldDirection(_v); _v.y = 0; _v.normalize();
-  const fx = n.s ? n.s.dx : 0, fz = n.s ? n.s.dz : 1, px = fz, pz = -fx;
-  for (const hd of HOUNDS) {
-    if (!hd.active) {
-      if (!zone) continue;
-      hd.active = true; hd.x = p.x + fx * (hd.ahead - 30) + px * hd.side * (hd.lat + 30); hd.z = p.z + fz * (hd.ahead - 30) + pz * hd.side * (hd.lat + 30);
+function updateCliffStalkers(dt) {
+  if (!CLIFF.length) return;
+  const p = here(), cam = G.camera, foot = !S.inTractor;
+  cam.getWorldDirection(_w);
+  const beside = G.area === 'out' && p.z > CANYON.z0 + 10 && p.z < CANYON.z1 - 10 && p.x > -60 && p.x < 46;
+  for (const s of CLIFF) {
+    _v.copy(s.g.position).sub(cam.position); const dist = _v.length(); _v.normalize();
+    const watched = _w.dot(_v) > Math.cos(dist < 30 ? 0.3 : 0.18) && dist < 170;
+    // looked at, it presses flat to the rock and goes still
+    s.flat = lerp(s.flat, watched && s.state !== 'drop' ? 1 : 0, clamp(dt * 7, 0, 1)); s.g.scale.y = 1 - 0.32 * s.flat;
+    if (s.state !== 'perched' || !beside) continue;
+    if (watched) {
+      if (s.moved > 5 && dist < 130) { meet('stalker'); once('cliff-stalker', 'Something on the cliff. A shape on a ledge the colour of the rock… I look, and it’s only rock. I look back, and it’s further along. Drop-Stalker. Pacing me.', ['C', GUIDE + '; the pacing is ' + NEW]); }
+      s.moved = 0; continue;
     }
-    const tx = p.x + fx * hd.ahead + px * hd.side * hd.lat + Math.sin(G.time * 0.3 + hd.lat) * 5, tz = p.z + fz * hd.ahead + pz * hd.side * hd.lat;
-    const dx = tx - hd.x, dz = tz - hd.z, dist = Math.hypot(dx, dz), sp = Math.min(11, dist * 1.3);
-    if (dist > 0.3) { hd.x += dx / dist * sp * dt; hd.z += dz / dist * sp * dt; const want = Math.atan2(dx, dz); hd.yaw += Math.atan2(Math.sin(want - hd.yaw), Math.cos(want - hd.yaw)) * clamp(dt * 4, 0, 1); }
-    hd.t += dt * (2 + sp * 1.1);
-    hd.legs.forEach((l, k) => { l.rotation.x = Math.sin(hd.t + (k % 2 ? Math.PI : 0) + (k > 1 ? 0.6 : 0)) * 0.55 * Math.min(1, sp / 4); });
-    hd.g.position.set(hd.x, h(hd.x, hd.z), hd.z); hd.g.rotation.y = hd.yaw;
-    // look straight at one and it isn't there
-    const ox = hd.x - cam.position.x, oz = hd.z - cam.position.z, od = Math.hypot(ox, oz) || 1, seen = (ox * _v.x + oz * _v.z) / od > Math.cos(0.42);
-    const want = !zone || seen || od > 150 ? 0 : 0.92;
-    hd.op = lerp(hd.op, want, clamp(dt * (want < hd.op ? 9 : 1.6), 0, 1));
-    hd.mat.opacity = hd.op; hd.g.visible = hd.op > 0.02;
-    if (!zone && hd.op < 0.02) hd.active = false;
-    if (hd.op > 0.5 && od < 100) {
-      S.stress = Math.min(100, S.stress + dt * 0.2);
-      meet('hounds'); once('hounds', 'Dogs. Lean, ribby things, keeping pace out in the scrub. I look, and there’s nothing there. I look away, and there they are again.', X('the hounds'));
-    }
+    // under the cliff on foot, it comes along to be over him; otherwise it keeps pace up there, ahead or behind
+    _p.set(p.x, 0, p.z); const foot2cliff = escarpmentPoint(p.z, 0, _s).x - p.x;
+    const tz = clamp(p.z + (foot && foot2cliff < 16 ? 0 : s.cliff.ahead), CANYON.z0 + 15, CANYON.z1 - 15), dz = tz - s.cliff.z;
+    if (Math.abs(dz) > 0.3) {
+      const step = clamp(dz, -dt * 6.5, dt * 6.5); s.cliff.z += step; s.moved += Math.abs(step);
+      escarpmentPoint(s.cliff.z, s.cliff.v, s.home, 0.7); s.home.y += 0.55;
+      s.g.rotation.y = step > 0 ? 0 : Math.PI;
+    } else s.g.rotation.y = -Math.PI / 2;                                         // waiting, facing out over the road
   }
 }
 
