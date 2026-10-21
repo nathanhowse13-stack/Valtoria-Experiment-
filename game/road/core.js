@@ -38,7 +38,7 @@ export const P = { x: 0, z: 0, y: 0, yaw: 0, pitch: -0.05, look: 0, speed: 0, bo
 export const things = [];      // anything that can be used: { id, name, verb, x, y, z, r, prov, use, enabled, area }
 export const blockers = [];    // circles { x, z, r } and boxes { x0, z0, x1, z1 } outside
 export const shades = [];      // where the sun can't reach: { x, z, r, why }
-export const W = { spinifex: [], weeds: [], gums: [], stalkers: [], argus: [], wattles: [], flySources: [], mirages: [], leaks: [], smoke: [], tractorThings: [] };
+export const W = { spinifex: [], weeds: [], gums: [], stalkers: [], argus: [], wattles: [], flySources: [], mirages: [], leaks: [], smoke: [], tractorThings: [], sprays: [], drips: [], poles: [], spans: [] };
 export const hooks = { bark() {}, book() {}, toast() {}, hurt() {}, sfx: new Proxy({}, { get: () => () => {} }), updateVitals() {} };
 export const addThing = (t) => { const o = { r: 1.4, y: 0.8, area: 'out', enabled: () => true, ...t }; things.push(o); return o; };
 export const bark = (...a) => hooks.bark(...a);
@@ -46,11 +46,11 @@ export const once = (key, text, prov) => { if (S.flags['l:' + key]) return; S.fl
 
 // what Jacob knows about each thing he meets, for the field notes
 export const SPECIES = {
-  gum: { name: 'Gallows-Gum', tag: 'C', src: CH2, fact: 'Pale, perfectly still, bark peeling like sunburned skin over wet red cambium; a noose of a loop hidden in the leaves. They taste the anima of fear, and vibration frenzies them.', counter: 'Go slow. Stay calm. Don’t look up: looking up is acknowledgement, and acknowledgement is fear.' },
+  gum: { name: 'Gallows-Gum', tag: 'C', src: GUIDE, fact: 'The best shade on the road, and it waits for whoever rests in it to relax before it attacks. (Chapter Two gives it pale bark peeling like sunburned skin over wet red cambium, and a noose of a loop in the leaves.)', counter: 'Use the shade if you must, but don’t settle: keep moving, stay on edge, and never park under one. When the limb creaks, go.' },
   spinifex: { name: 'Razor-Spinifex', tag: 'C', src: CH2, fact: 'A golden sea of blades made of something like glass, sharper than surgical steel. It senses movement, thrashes, and drinks the iron-rich blood of whatever it cuts.', counter: 'Keep to the game trail. On foot, walk; never run through it. In the tractor, creep, then punch it once you’re clear of the gums.' },
   weed: { name: 'Compass-Weed', tag: 'C', src: CH1 + '; ' + GUIDE, fact: 'A small, perfect spiral of leaves. Its spores scramble a compass, and a person’s sense of direction with it.', counter: 'Stop trusting the needle and your feet. Steer by the wires, the pipeline and the sun.' },
-  flies: { name: 'Gossip-Flies', tag: 'C', src: CH1 + '; ' + CH2, fact: 'Thumb-sized, oil-slick wings. They mimic fears and play them back; a swarm doesn’t just annoy, it mines a mind.', counter: 'Outrun the small ones. A swarm breaks apart in sulphur: Sulphur-Salts in the intake, then redline it.' },
-  strider: { name: 'Salt-Strider', tag: 'C', src: CH2, fact: 'Raptor-like, furred the colour of sun-bleached bone, over eight feet tall, a tail like a rudder. It moves by folding space, fifty feet at a blink. It hunts the open flats.', counter: 'Hold a constant, boring speed. Don’t speed up. Don’t slow down. Let it weigh you and find you too metallic.' },
+  flies: { name: 'Gossip-Flies', tag: 'C', src: GUIDE + '; ' + CH2, fact: 'Fist-sized, oil-slick wings. They pick up fears and whisper them back; a swarm doesn’t just annoy, it mines a mind.', counter: 'Outrun the small ones. A swarm breaks apart in sulphur: Sulphur-Salts in the intake, then redline it.' },
+  strider: { name: 'Salt-Strider', tag: 'C', src: GUIDE + '; the look and the blink are ' + CH2, fact: 'Raptor-like, furred the colour of sun-bleached bone, over eight feet tall, a tail like a rudder. It moves by folding space, fifty feet at a blink. It hunts the open flats.', counter: 'Hold a constant, boring speed. Don’t speed up. Don’t slow down. Let it weigh you and find you too metallic.' },
   boar: { name: 'Razor-Back Boar', tag: 'C', src: CH2, fact: 'Bristles like blades down the spine. One running scared means something spooked it from the other direction.', counter: '' },
   stalker: { name: 'Drop-Stalker', tag: 'C', src: GUIDE, fact: 'A leopard-sized, heavily muscled koala-like predator that ambushes travellers from above, around rocky overhangs.', counter: 'Listen for the clicking. Look up and hold its eye; it won’t drop on something that’s watching it.' },
   wattle: { name: 'Judas-Wattle', tag: 'C', src: GUIDE, fact: 'Its pollen, the Golden Haze, turns the red world green and promises water.', counter: 'Keep to the road. Whatever’s shining up ahead isn’t there.' },
@@ -59,6 +59,8 @@ export const SPECIES = {
   devil: { name: 'Thorny-Devil', tag: 'P', src: FARM, fact: 'A spiked lizard that basks on warm rock. Anything thrown at one goes straight back where it came from.', counter: '' },
   jaws: { name: 'Jaw-Jaws', tag: 'P', src: FARM, fact: 'Wedge-headed copper strippers in green-gone shells. They gut wrecks for wire.', counter: 'Keep them off the tractor’s ignition.' },
   webs: { name: 'Tunnel-Webs', tag: 'P', src: FARM, fact: 'Sheet webs across dark places, and what lives in them bites.', counter: 'Move slowly and brush them aside. Blunder through and you’ll be bitten.' },
+  crows: { name: 'Tally-Crows', tag: 'X', src: NEW + ', a fear-made animal in the spirit of the Field Guide', fact: 'Black birds in rows along the wires of the old power line, every head turning as you pass. They lift when you come close, circle, and settle again behind you. They count.', counter: 'Nothing to be done about them. Don’t count back.' },
+  hounds: { name: 'Hollow-Hounds', tag: 'X', src: NEW + ', a fear-made animal in the spirit of the Field Guide', fact: 'Lean, ribby dogs that keep pace with travellers out in the scrub along the main road, and are only ever there at the corner of the eye. Look straight at one and there’s nothing. They never come closer. They just follow.', counter: 'Keep your eyes on the road.' },
   ruin: { name: 'Ruins on the road', tag: 'X', src: NEW, fact: 'Shacks and camps people walked away from. Shade without branches, and sometimes a little water.', counter: '' },
 };
 export function meet(k) { if (S.met[k]) return; S.met[k] = true; hooks.toast(`Field notes · ${SPECIES[k].name}`); }
@@ -76,6 +78,9 @@ export const FINDS = [
   { name: 'Vacuum flask', where: 'the seep in the east wall', book: ['…and when the sun grew tired, the houses swallowed it whole and kept its warmth inside the walls until morning.', CH1 + ', epigraph'], text: 'A steel bottle with a glass skin inside. Pour something hot in at night and it’s still hot in the morning. Out here that’s a curse.' },
   { name: 'Sulphur-Salts tin', where: 'the seep in the east wall', counts: 'sulphur', text: 'A sealed tin of Sulphur-Salts, tucked in a crack where the damp couldn’t reach it. One more blast, if the flies come. Back in the compartment with it.' },
   { name: 'Creeper-vine cord', where: 'the seep in the east wall', text: 'A coil of dried creeper-vine, the same stuff that holds the load on the tractor. Somebody strung this up as a ladder and never came back for it.' },
+  { name: 'Insulator glass', where: 'a fallen pole on the old main road', text: 'A glass insulator off a power pole, green as a bottle and ribbed like a shell. It held the lightning off the wood, once. The wire it held is still humming.' },
+  { name: 'Tin wind-up bird', where: 'a caved-in house in Tally Bore', text: 'A little tin bird with a key in its back. Wind it and it hops, and pecks at nothing. It still pecks. Somebody left in a hurry, or couldn’t bear to take it.' },
+  { name: 'Pump-house logbook', where: 'the pump house at Tally Bore', text: 'Pressure readings twice a day, in a careful hand, for years. The numbers fall. The last page: MAIN FAILED AT THE BEND. NO PIPEWRIGHTS. TOWN LEAVING FOR THE FLATS. TAKE WHAT WATER YOU CAN CARRY.' },
   { name: 'Telephone handset', where: 'the old adit', book: ['Information moved alongside the road, in towers that stood high and bold.', CH2 + ', epigraph'], text: 'A curved black handle with holes at each end: one to speak into, one to listen. A cord hangs off it, cut. Nobody’s on the other end.' },
   { name: 'Miner’s brass chit', where: 'the old adit', text: 'A brass tally chit, the kind the mines hand out for a shift. This one says 1 SHIFT · BF. Somebody didn’t come back up to cash it.' },
   { name: 'Pre-Fracture glass', where: 'the old adit', text: 'A thick lens of glass, ground perfectly smooth, wedged in the rock at the end of the adit. No anima in it at all.' },
@@ -130,6 +135,7 @@ export function initMaterials(maxAniso) {
   Object.assign(M, {
     ground: new THREE.MeshStandardMaterial({ map: T.dirt.c, normalMap: T.dirt.n, normalScale: new THREE.Vector2(0.8, 0.8), vertexColors: true, roughness: 1 }),
     road: new THREE.MeshStandardMaterial({ map: T.dirt.c, normalMap: T.dirt.n, normalScale: new THREE.Vector2(0.35, 0.35), vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 }),
+    seal: new THREE.MeshStandardMaterial({ normalMap: T.dirt.n, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true, roughness: 1, envMapIntensity: 0.12, polygonOffset: true, polygonOffsetFactor: -2 }),   // old bitumen: the colour's all in the vertices
     strata: new THREE.MeshStandardMaterial({ map: T.dirt.c, normalMap: T.iron.n, normalScale: new THREE.Vector2(1.4, 1.4), vertexColors: true, roughness: 0.95 }),   // canyon and cave rock: the banding is in the vertex colours
     rock: std('iron', { color: 0xc8826a, roughness: 0.95 }),
     iron: std('iron', { roughness: 0.8, metalness: 0.4 }),
@@ -170,13 +176,21 @@ export function initMaterials(maxAniso) {
     mirage: new THREE.MeshBasicMaterial({ color: 0xbfe0e4, transparent: true, opacity: 0, depthWrite: false, fog: false, alphaMap: softEdge() }),   // feathered, so it lies on the pans like a sheet of water
     truthrot: new THREE.MeshStandardMaterial({ color: 0xd8f0c0, emissive: 0x5cff5a, emissiveIntensity: 1.2, roughness: 0.6 }),
     web: new THREE.MeshBasicMaterial({ color: 0xf4f0e8, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false }),
-    water: new THREE.MeshStandardMaterial({ color: 0x1a1612, roughness: 0.05, metalness: 0.3 }),
+    water: new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.12, metalness: 0.2, envMapIntensity: 0.35 }),   // still and dark, with a little sky in it
     corr: std('tin', { color: 0x9a7a62, roughness: 0.6, metalness: 0.5, side: THREE.DoubleSide }),
     wire: new THREE.LineBasicMaterial({ color: 0x1c1816 }),
     smoke: new THREE.MeshBasicMaterial({ color: 0x3a3230, transparent: true, opacity: 0.35, depthWrite: false }),
     yellowSmoke: new THREE.MeshBasicMaterial({ color: 0x4a4026, transparent: true, opacity: 0.4, depthWrite: false }),
     ironshell: std('iron', { color: 0x8a8a88, roughness: 0.6, metalness: 0.7 }),
     slit: new THREE.MeshStandardMaterial({ color: 0x200000, emissive: 0xd01a10, emissiveIntensity: 1.6 }),
+    post: new THREE.MeshStandardMaterial({ color: 0xe2dccf, roughness: 0.8 }),                     // guide posts
+    reflector: new THREE.MeshStandardMaterial({ color: 0x8a1410, emissive: 0x3a0402, roughness: 0.3 }),
+    pole: std('frame', { color: 0x8a7a68, roughness: 0.95 }),                                        // power poles, grey with age
+    insulator: new THREE.MeshStandardMaterial({ color: 0x6f9a7c, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.85 }),   // bottle-green glass
+    crow: new THREE.MeshStandardMaterial({ color: 0x141212, roughness: 0.45, metalness: 0.25, side: THREE.DoubleSide }),
+    hound: new THREE.MeshStandardMaterial({ color: 0x5a4a40, roughness: 0.9, transparent: true, opacity: 0 }),
+    brick: new THREE.MeshStandardMaterial({ color: 0x9a5a44, roughness: 0.95, flatShading: true }),
+    tank: std('tin', { color: 0xa89a88, roughness: 0.5, metalness: 0.6, side: THREE.DoubleSide }),
   });
   // the spinifex never quite holds still, and thrashes where something moves through it
   M.spinifex.onBeforeCompile = (sh) => {

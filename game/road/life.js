@@ -3,8 +3,8 @@
 // a Field Guide or Chapter One/Two species doing what the books say
 // it does; the tells and the counters are the game's (Experimental).
 //
-//   Gallows-gums (Ch2)    line the canyon floor. They taste fear; vibration frenzies them;
-//                         looking up is acknowledgement. Slow, calm, eyes down.
+//   Gallows-gums (Guide)  line the canyon floor. They wait for someone to relax in their shade, then strike.
+//                         Keep moving, stay on edge; the creak is the warning. (The look is Chapter Two's.)
 //   Razor-spinifex (Ch2)  chokes the canyon floor past the gums, with a game trail through it.
 //                         It thrashes at movement and lashes the hull. Creep, then punch it.
 //   Salt-striders (Ch2)   raptor-like, bone-furred, blinking fifty feet at a time. They hunt
@@ -14,7 +14,7 @@
 //   Farm of Rust sketch: thorny-devils, jaw-jaws, the Miser-Boab and the Iron-Bark Sentinel.
 // ============================================================
 import { THREE, TAU, clamp, lerp, smooth, rng, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, SWAY, glowTexture, placeRelic, GUIDE, CH1, CH2, FARM, NEW } from './core.js';
-import { h, roadDist, nearestRoad, canyonAxisX, CANYON, CAVE_MOUTHS, ridgeX, PITS, ADIT, saltAt, nearbySpinifex, addSpinifex, track, RESERVED, TOWERS, inCanyon } from './land.js';
+import { h, roadDist, nearestRoad, canyonAxisX, CANYON, CAVE_MOUTHS, ridgeX, PITS, ADIT, saltAt, panX, TALLY, nearbySpinifex, addSpinifex, track, RESERVED, TOWERS, inCanyon } from './land.js';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _fwd = new THREE.Vector3();
 const near = (a, x, z, r) => Math.hypot(a.x - x, a.z - z) < r;
@@ -32,6 +32,7 @@ for (let k = 0, z = 326; z < 474; z += 21, k++) {
   if (side === CAVE_MOUTHS.den.side && Math.abs(z - CAVE_MOUTHS.den.z) < 14) continue;      // the den's mouth stays clear
   SITES.gums.push({ x: canyonAxisX(z) + side * (CANYON.half - 3.6), z, side });
 }
+SITES.gums.push({ x: TALLY.x + 17, z: TALLY.z + 82, side: 1 });                              // and one by Tally Bore, the best shade in town
 { const n = nearestRoad(-10, 1012); SITES.wreck = { x: (n.s ? n.s.x : 0) - 15, z: 1012 }; }
 SITES.ridgeStalker = { x: ridgeX(1612) + 8, z: 1612 };
 // keep the scatter clear of all of it
@@ -63,6 +64,8 @@ export function buildLife() {
   for (let k = 0; k < 2; k++) devils.push(buildDevil(canyonAxisX(400 + k * 160) + (k ? 6 : -7), 400 + k * 160));
   for (let k = 0; k < 6; k++) jaws.push(buildJawJaw(SITES.wreck.x + (R() - 0.5) * 14, SITES.wreck.z + (R() - 0.5) * 14));
   for (let k = 0; k < 4; k++) jaws.push(buildJawJaw(PITS[0].x + (R() - 0.5) * 20, PITS[0].z + (R() - 0.5) * 20));
+  for (let k = 0; k < 3; k++) jaws.push(buildJawJaw(TALLY.x - 11 + (R() - 0.5) * 6, TALLY.z - 10 + (R() - 0.5) * 6));   // stripping the dead car in Tally Bore
+  for (const [x, z] of [[20, 330], [26, 338], [16, 344], [-30, 760], [-36, 768]]) boars.push(buildBoar(x, z));        // rooting along the main road
   // the finds out in the open
   placeRelic('Survey stake', new THREE.Vector3(26, h(26, 222) + 0.3, 222));
   const leak = W.leaks.find(l => l.z > 900) || W.leaks[0];
@@ -136,10 +139,10 @@ function buildGum(def) {
   for (let k = 0; k < 3; k++) { const b = mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.45, 6), M.bone); b.position.set(R() * 2, 0.08, 1.4 + R() * 2); b.rotation.set(Math.PI / 2, 0, R() * 3); g.add(b); }
   blockers.push({ x, z, r: 0.9 });
   const reach = new THREE.Vector3(0, 0, 4.2).applyAxisAngle(new THREE.Vector3(0, 1, 0), g.rotation.y).add(g.position);
-  const gum = { x, z, rx: reach.x, rz: reach.z, top: new THREE.Vector3(x, y + 8, z), agitation: 0, cool: 0, pivot, swing: 0, creaked: false, struck: 0 };
+  const gum = { x, z, rx: reach.x, rz: reach.z, top: new THREE.Vector3(x, y + 8, z), relax: 0, cool: 0, pivot, swing: 0, creaked: false, struck: 0 };
   W.gums.push(gum); shades.push({ x, z, r: 6.5, why: 'gum', gum });
   W.flySources.push({ x, z, r: 12 });
-  addThing({ id: 'gum' + Math.round(z), name: 'Gallows-Gum', verb: 'Look', x, y: y + 1.5, z, r: 2.6, prov: ['C', CH2], use: () => { meet('gum'); bark('Bark like sunburned skin, and the red under it wet. It isn’t swaying. There’s no wind to sway in. Eyes down, Jacob.', ['C', CH2]); } });
+  addThing({ id: 'gum' + Math.round(z), name: 'Gallows-Gum', verb: 'Look', x, y: y + 1.5, z, r: 2.6, prov: ['C', GUIDE], use: () => { meet('gum'); bark('Bark like sunburned skin, and the red under it wet. Cool, deep shade, and a stain on the ground under the big limb. It’s waiting for me to sit down.', ['C', GUIDE + '; the look is ' + CH2]); } });
 }
 
 // the canyon floor past the gums, choked with spinifex; one narrow game trail through it, worn down by armoured beasts
@@ -367,7 +370,7 @@ function buildWreck() {
   const N = 1400, pos = new Float32Array(N * 3);
   for (let k = 0; k < N; k++) { const r = Math.cbrt(Math.random()) * 4, a = Math.random() * TAU, b = Math.acos(2 * Math.random() - 1); SWARM.home.push([r * Math.sin(b) * Math.cos(a), r * Math.cos(b) * 0.7, r * Math.sin(b) * Math.sin(a), Math.random() * TAU]); pos.set([sp.x, 2, sp.z], k * 3); }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x0a0c10, size: 0.05, transparent: true, opacity: 0.9, depthWrite: false }));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x0a0c10, size: 0.09, transparent: true, opacity: 0.9, depthWrite: false }));   // fist-sized, a thousand of them
   pts.frustumCulled = false; G.scene.add(pts);
   Object.assign(SWARM, { x: sp.x, z: sp.z, y: h(sp.x, sp.z) + 2.2, points: pts, pos });
   W.flySources.push({ x, z, r: 24 });
@@ -441,32 +444,26 @@ function updateWeeds(dt, x, z, foot) {
   S.disoriented = Math.max(0, S.disoriented - dt);
 }
 
-// Chapter Two: they taste the anima of fear; vibration frenzies them; looking up is acknowledgement
+// The Field Guide: a Gallows-Gum waits for someone to relax before it attacks. Its shade is the bait: stop in it,
+// let it cool you down, let your shoulders drop, and the limb comes down. On edge, or moving, you're safe enough.
 function updateGums(dt, x, z, foot) {
-  const cam = G.camera;
   for (const g of W.gums) {
     const d = Math.hypot(x - g.rx, z - g.rz);
     g.cool = Math.max(0, g.cool - dt);
-    let feedOn = 0;
-    if (d < 16 && g.cool <= 0) {
-      if (!S.flags.gumIntro) { S.flags.gumIntro = true; meet('gum'); bark('Slow. Calm. Do not feed them. Do not startle them.', ['C', CH2]); }
-      const vib = S.inTractor ? Math.max(0, P.speed - 2.2) * 0.55 : Math.max(0, P.speed - 1.6) * 0.8;          // the engine and the wheels, or running feet
-      const fear = Math.max(0, S.stress - 40) / 35;                                                            // a racing heart
-      _to.copy(g.top).sub(cam.position).normalize();
-      const looking = cam.rotation.x > 0.25 && _fwd.dot(_to) > 0.82 && d < 14 ? 1.3 : 0;                      // looking up at it
-      feedOn = vib + fear + looking;
-      if (looking && !S.flags.lookup) { S.flags.lookup = true; bark('Don’t look up. Looking up is acknowledgement. Acknowledgement is fear.', ['C', CH2]); }
+    if (d < 6.5 && g.cool <= 0) {
+      if (!S.flags.gumIntro) { S.flags.gumIntro = true; meet('gum'); bark('Gallows-Gum. The best shade for twenty clicks, and that’s the trick of it. Don’t get comfortable.', ['C', GUIDE]); }
+      const still = P.speed < 0.35, easy = 1 - smooth(20, 60, S.stress);      // stopped, and settling; a racing heart keeps him on edge
+      g.relax = still ? g.relax + dt * (0.3 + easy) : Math.max(0, g.relax - dt * (P.speed > 1.5 ? 2 : 0.6));
+    } else g.relax = Math.max(0, g.relax - dt * 1.5);
+    if (g.relax > 2.4 && !g.creaked) { g.creaked = true; hooks.sfx.creak(); bark('That creak. Like a heavy door opening in an empty house. Don’t get comfortable. Move.', ['X', 'the tell: ' + NEW + '; the sound is ' + CH2]); }
+    if (g.relax < 0.5 && g.creaked) g.creaked = false;
+    if (g.relax > 4.6) {
+      g.relax = 0; g.creaked = false; g.cool = 10; g.struck = 1; hooks.sfx.crash();
+      if (S.inTractor) { hooks.hurt(16, 'gum'); G.tractor.stall = 1.6; S.hull += 3; bark('It comes down on the bonnet like intent. Never park under one. Never.', ['C', GUIDE + ': it strikes when you relax']); }
+      else { hooks.hurt(32, 'gum'); P.stun = 0.7; S.stress = Math.min(100, S.stress + 20); bark('The limb comes down like a hammer. I let myself relax. That’s all it was waiting for.', ['C', GUIDE + ': it strikes when you relax']); }
     }
-    g.agitation = feedOn > 0.05 ? g.agitation + feedOn * dt : Math.max(0, g.agitation - dt * 0.6);
-    if (g.agitation > 0.9 && !g.creaked) { g.creaked = true; hooks.sfx.creak(); bark('The limb creaks. A sound like a heavy door opening in an empty house. Just a rock, Jacob. Just a rock floating down a stream.', ['C', CH2]); }
-    if (g.agitation < 0.3 && g.creaked) { g.creaked = false; }
-    if (g.agitation > 2.6 && d < 7.5) {
-      g.agitation = 0; g.creaked = false; g.cool = 10; g.struck = 1; hooks.sfx.crash();
-      if (S.inTractor) { hooks.hurt(16, 'gum'); G.tractor.stall = 1.6; S.hull += 3; bark('It comes down on the bonnet like intent. Move!', ['C', CH2]); }
-      else { hooks.hurt(32, 'gum'); P.stun = 0.7; S.stress = Math.min(100, S.stress + 20); bark('The limb comes down like a hammer. It knew I was afraid.', ['C', CH2]); }
-    }
-    // the limb angles down with intent, and retracts when the tree's unsure
-    const want = g.struck > 0 ? 1.25 : g.agitation > 0.9 ? 0.18 + (g.agitation - 0.9) * 0.12 : 0;
+    // the limb angles down once it's decided, and comes down when it strikes
+    const want = g.struck > 0 ? 1.25 : g.relax > 2.4 ? 0.12 + (g.relax - 2.4) * 0.06 + Math.sin(G.time * 0.6) * 0.03 : 0;
     g.swing = lerp(g.swing, want, clamp(dt * (g.struck > 0 ? 14 : 1.2), 0, 1));
     g.pivot.rotation.x = g.swing;
     if (g.struck > 0) g.struck = Math.max(0, g.struck - dt * 0.6);
@@ -512,14 +509,25 @@ function updateStriders(dt, x, z, foot) {
   const speed = S.inTractor ? Math.abs(G.tractor.speed) : P.speed;
   // a changing speed is what it reads: track how much it has varied lately
   S.dv = lerp(S.dv || 0, Math.abs(speed - (S.lastSpeed ?? speed)) / Math.max(dt, 1e-3), clamp(dt * 3, 0, 1)); S.lastSpeed = speed;
-  // the pans
-  const st = STRIDERS.pans, onPans = saltAt(x, z) > 0.4;
-  if (st.state === 'off' && onPans && st.cool <= 0) {
-    st.state = 'stalk'; st.x = x + 90; st.z = z + 40; st.blinkIn = 1; st.t = 0; st.g.visible = true; st.paceT = 0; dustBurst(st.x, st.z);
-    meet('strider'); bark('Salt-strider, out on the flats. Don’t speed up. Don’t slow down. Boring, Jacob. Be boring.', ['C', CH2]);
+  // the pans: from the main road you see one out on the salt, keeping abreast; step onto the salt and it hunts
+  const st = STRIDERS.pans, onPans = saltAt(x, z) > 0.4, beside = !onPans && z > 300 && z < 820 && x < 30 && Math.abs(x - panX(z)) < 150;
+  if ((st.state === 'off' || st.state === 'watch') && onPans && st.cool <= 0) {
+    if (st.state === 'off') { st.x = x - 90; st.z = z + 40; dustBurst(st.x, st.z); }
+    st.state = 'stalk'; st.blinkIn = 1; st.t = 0; st.g.visible = true; st.paceT = 0;
+    meet('strider'); bark('On the salt now. Salt-strider. Don’t speed up. Don’t slow down. Boring, Jacob. Be boring.', ['C', CH2]);
+  } else if (st.state === 'off' && beside && st.cool <= 0) {
+    st.state = 'watch'; st.x = panX(z) + (Math.random() - 0.5) * 30; st.z = z + 70; st.g.visible = true; st.blinkIn = 2; dustBurst(st.x, st.z);
+    meet('strider'); once('strider-watch', 'Out on the pans. Something pale, taller than a man. Then it isn’t there, and then it’s further along. Salt-strider. Stay on the road.', ['C', GUIDE + '; the blink is ' + CH2]);
   }
   st.cool = Math.max(0, st.cool - dt);
-  if (st.state !== 'off') stride(st, dt, x, z, foot, speed, onPans ? 1 : 0);
+  if (st.state === 'watch') {
+    // out on the salt, keeping abreast, folding forward fifty feet at a time; it watches, and doesn't come
+    poseStrider(st, dt, false);
+    st.yaw = Math.atan2(x - st.x, z - st.z);
+    st.blinkIn -= dt;
+    if (st.blinkIn <= 0) { blinkTo(st, panX(z + 40) + (Math.random() - 0.5) * 40, z + 40 + Math.random() * 40); st.blinkIn = 2.5 + Math.random() * 3; }
+    if (!beside) { st.state = 'leave'; st.t = 0; st.cool = 8; }
+  } else if (st.state !== 'off') stride(st, dt, x, z, foot, speed, onPans ? 1 : 0);
   // the ridge
   const rs = STRIDERS.ridge;
   if (rs.state === 'off' && !rs.done && !foot && z > 1335 && z < 1500) {

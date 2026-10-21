@@ -2,11 +2,15 @@
 // The land between the farm and Bleak Flats, laid out as Chapter Two
 // drives it. North from the gate, the road forks: the Old Canyon Road
 // banks hard left (west) into a canyon of rusted iron-shale and
-// sandstone, longer but sheltered; the direct track runs straight
-// across the salt pans, where salt-striders hunt by day. They rejoin
-// and run on past the skeleton of an old transmission line, then
-// through the scarred outskirts (boreholes, strip mines, a ridge to the
-// east) to the walls of Bleak Flats.
+// sandstone, the interesting way; the old main road runs straight on,
+// broken seal and all, under the escarpment of the canyon's mesa and
+// along the edge of the salt pans, where salt-strider hunt by day. It
+// is littered with what the old world left: a power line falling down
+// pole by pole, a pipeline failing section by section, and Tally Bore,
+// a hamlet of houses coming apart. The two rejoin and run on past the
+// skeleton of an old transmission line, then through the scarred
+// outskirts (boreholes, strip mines, a ridge to the east) to the walls
+// of Bleak Flats.
 //
 // The canyon is scaled down (the book's walls are three hundred feet;
 // these are forty metres) to fit 1.8 km standing for twenty clicks.
@@ -21,7 +25,7 @@ export const HALF_W = 330;
 const ROUTE_PTS = {
   gate: [[0, -60], [0, 0], [-2, 100], [2, 200]],
   canyon: [[2, 200], [28, 238], [66, 280], [88, 318], [94, 380], [88, 450], [93, 520], [99, 590], [91, 660], [85, 730], [74, 784], [36, 836], [6, 878]],
-  salt: [[2, 200], [-16, 258], [-30, 350], [-34, 470], [-30, 600], [-24, 720], [-12, 820], [6, 878]],
+  main: [[2, 200], [0, 270], [-6, 360], [-4, 450], [3, 540], [2, 620], [-3, 720], [0, 800], [6, 878]],
   north: [[6, 878], [9, 960], [1, 1060], [-7, 1160], [0, 1260], [6, 1360], [-2, 1460], [-6, 1560], [2, 1660], [0, 1760], [0, 1840]],
 };
 function sampleRoute(pts, step = 2) {
@@ -66,6 +70,9 @@ export function canyonAxisX(z) {
   const a = canyonSamples[lo], b = canyonSamples[hi]; return lerp(a.x, b.x, (z - a.z) / (b.z - a.z || 1));
 }
 export const canyonWeight = (z) => smooth(CANYON.z0 - 12, CANYON.z0 + 8, z) * (1 - smooth(CANYON.z1 - 8, CANYON.z1 + 12, z));
+// the mesa the canyon cuts: broad to the west, and a short steep escarpment on the east, above the main road
+export const mesaOuter = (side) => side > 0 ? 120 : 42;
+const mesaFall = (side) => side > 0 ? 50 : 6;
 export const inCanyon = (x, z) => z > CANYON.z0 - 4 && z < CANYON.z1 + 4 && Math.abs(x - canyonAxisX(z)) < CANYON.half + 2;
 // where the walls bulge, ledge and overhang; kept plain near the cave mouths
 export const CAVE_MOUTHS = { den: { z: 440, side: 1 }, seep: { z: 646, side: -1 } };
@@ -94,11 +101,13 @@ export const ridgeX = (z) => -152 + 14 * Math.sin(z * 0.011);
 const ridgeW = (z) => smooth(1220, 1290, z) * (1 - smooth(1690, 1760, z));
 export const PITS = [{ x: -84, z: 1418, r: 36, depth: 11 }, { x: 62, z: 1530, r: 26, depth: 7 }];
 export const ADIT = { x: -84 - 21.5, z: 1418, facing: 1 };     // in the east wall of the big pit, its mouth facing west into the pit
+// Tally Bore: a hamlet on the old main road, built round a pumping station on the pipeline
+export const TALLY = { x: 2, z: 575, pump: { x: -22, z: 620 } };
+// the salt pans lie east of the main road, a long white sheet the road skirts
+export const panX = (z) => -100 + 12 * Math.sin(z * 0.009);
 export const saltAt = (x, z) => {
-  const n = nearestRoad(x, z), onSaltSide = x < 30;
-  if (!onSaltSide || z < 236 || z > 850) return 0;
-  const sd = Math.abs(x - lerp(-16, -34, smooth(240, 460, z)) * (1 - smooth(700, 870, z)));
-  return smooth(85, 45, sd) * smooth(236, 290, z) * (1 - smooth(800, 860, z)) * (n.s && n.s.route === 'canyon' && n.d < 20 ? 0 : 1);
+  if (z < 240 || z > 850 || x > -20) return 0;
+  return smooth(78, 46, Math.abs(x - panX(z))) * smooth(240, 300, z) * (1 - smooth(790, 850, z));
 };
 
 // ---------- the height of the land anywhere ----------
@@ -110,9 +119,9 @@ export function h(x, z) {
   // the mesa the canyon cuts through
   const cw = canyonWeight(z);
   if (cw > 0) {
-    const d = Math.abs(x - canyonAxisX(z));
+    const dx = x - canyonAxisX(z), d = Math.abs(dx), side = dx > 0 ? 1 : -1, o = mesaOuter(side);
     const mesa = CANYON.H + 3 * noise2(x * 2, z * 2);
-    y = lerp(y, mesa, smooth(CANYON.half + 4, CANYON.half + 12, d) * cw * (1 - smooth(120, 170, d)));
+    y = lerp(y, mesa, smooth(CANYON.half + 4, CANYON.half + 12, d) * cw * (1 - smooth(o, o + mesaFall(side), d)));
   }
   // the ridge
   const rw = ridgeW(z);
@@ -128,13 +137,13 @@ export function h(x, z) {
 export function landBlocked(x, z, r) {
   const cw = canyonWeight(z);
   if (cw > 0.35) {
-    const ax = canyonAxisX(z), d = Math.abs(x - ax);
-    for (const k in CAVE_MOUTHS) { const c = CAVE_MOUTHS[k]; if (Math.abs(z - c.z) < 1.6 - r && Math.sign(x - ax) === c.side && d < CANYON.half + 2.6) return false; }   // up into a cave mouth
-    if (d > CANYON.half - 0.6 - r && d < 125) return true;
+    const ax = canyonAxisX(z), d = Math.abs(x - ax), side = x > ax ? 1 : -1;
+    for (const k in CAVE_MOUTHS) { const c = CAVE_MOUTHS[k]; if (Math.abs(z - c.z) < 1.6 - r && side === c.side && d < CANYON.half + 2.6) return false; }   // up into a cave mouth
+    if (d > CANYON.half - 0.6 - r && d < mesaOuter(side) + (side > 0 ? 5 : 6) - r) return true;      // the walls, and the mesa up to the top of its slope
   }
   if (z > CANYON.z0 - 16 && z < CANYON.z0 + 2 || z > CANYON.z1 - 2 && z < CANYON.z1 + 16) {   // the mesa's end faces
-    const d = Math.abs(x - canyonAxisX(clamp(z, CANYON.z0, CANYON.z1)));
-    if (d > CANYON.half + 1 && d < 118 && cw > 0.05) return true;
+    const ax = canyonAxisX(clamp(z, CANYON.z0, CANYON.z1)), d = Math.abs(x - ax);
+    if (d > CANYON.half + 1 && d < mesaOuter(x > ax ? 1 : -1) - 2 && cw > 0.05) return true;
   }
   return false;
 }
@@ -143,10 +152,12 @@ export function landBlocked(x, z, r) {
 export function placeAt(x, z) {
   if (inCanyon(x, z)) return z < 480 ? 'the Old Canyon Road, among the gums' : z < 670 ? 'the Old Canyon Road, in the spinifex' : 'the Old Canyon Road';
   if (saltAt(x, z) > 0.4) return 'the salt pans';
+  if (Math.hypot(x - TALLY.x, z - TALLY.z) < 60) return 'Tally Bore';
   if (z > 1780) return 'the gates of Bleak Flats';
   for (const p of PITS) if (Math.hypot(x - p.x, z - p.z) < p.r) return 'an old strip mine';
   if (ridgeW(z) > 0.5 && Math.abs(x - ridgeX(z)) < 30) return 'the ridge to the east';
-  const names = [[-100, 'the north gate'], [150, 'the fork'], [880, 'the north road'], [960, 'the old transmission line'], [1250, 'the outskirts'], [1640, 'the last stretch']];
+  const names = [[-100, 'the north gate'], [150, 'the fork'], [240, 'the old main road'], [880, 'the north road'], [960, 'the old transmission line'], [1250, 'the outskirts'], [1640, 'the last stretch']];
+  if (z > 240 && z < 880 && x < 40 && Math.abs(x - panX(z)) < 140 && roadDist(x, z) <= 16) return 'the old main road, along the salt pans';
   let n = names[0][1]; for (const [z0, name] of names) if (z >= z0) n = name;
   return roadDist(x, z) > 16 ? `off the road, ${n}` : n;
 }
@@ -154,8 +165,9 @@ export function placeAt(x, z) {
 // ---------- building it ----------
 export function buildLand() {
   for (let i = -1; i <= 20; i++) buildChunk(i);
-  for (const k in ROUTES) roadRibbon(ROUTES[k], k === 'salt' ? 4.2 : k === 'canyon' ? 4.6 : 7.6, k === 'salt' ? 0.92 : 1.0);
-  buildCanyon(); buildSaltPans(); buildTransmissionLine(); buildPipeline(); buildMesas(); buildOutskirts(); buildBleakFlats();
+  for (const k in ROUTES) roadRibbon(ROUTES[k], k === 'canyon' ? 4.6 : 7.6, 1.0, k !== 'canyon');
+  for (const k of ['gate', 'main', 'north']) { centreLine(ROUTES[k]); guidePosts(ROUTES[k], 7.6); }
+  buildCanyon(); buildEscarpment(); buildSaltPans(); buildTransmissionLine(); buildPipeline(); buildMesas(); buildOutskirts(); buildBleakFlats(); buildSigns();
 }
 
 const _c = new THREE.Color(), _t = new THREE.Color();
@@ -183,7 +195,7 @@ function buildChunk(i) {
   for (let k = 0; k < 220; k++) {
     const z = z0 + R() * 100, x = (R() - 0.5) * 2 * (HALF_W - 10), roll = R();
     const rd = roadDist(x, z), salt = saltAt(x, z), cw = canyonWeight(z);
-    if (rd < 9 || (cw > 0.2 && Math.abs(x - canyonAxisX(z)) > CANYON.half - 1 && Math.abs(x - canyonAxisX(z)) < 160)) continue;
+    if (rd < 9 || (cw > 0.2 && Math.abs(x - canyonAxisX(z)) > CANYON.half - 1 && Math.abs(x - canyonAxisX(z)) < mesaOuter(x > canyonAxisX(z) ? 1 : -1) + 14)) continue;
     if (nearReserved(x, z)) continue;
     if (salt > 0.5) { if (roll < 0.06) scrub.push([x, z, 0.3 + R() * 0.3, R()]); continue; }   // the pans are nearly bare
     if (inCanyon(x, z)) { if (roll < 0.3) rocks.push([x, z, 0.4 + R() * 1.4, R()]); continue; }   // the canyon floor gets its own spinifex
@@ -237,25 +249,93 @@ export function addSpinifex(g, clumps, chunk, blades = 14) {
   g.add(im);
 }
 
-// the road: a compacted ribbon, paler in the middle, wheel ruts either side
-function roadRibbon(samples, width, tone) {
+// the road: a compacted ribbon, paler in the middle, wheel ruts either side. The old main road is sealed: what's
+// left of the bitumen, grey under red dust, gone back to dirt at its crumbling edges and in potholes.
+function roadRibbon(samples, width, tone, sealed = false) {
   const half = width / 2, across = [-1, -0.68, -0.5, -0.3, -0.15, 0.15, 0.3, 0.5, 0.68, 1], shade = [0.86, 1.12, 0.66, 1.16, 1.22, 1.22, 1.16, 0.66, 1.12, 0.86];
   const p = [], c = [], u = [], ix = [], n = across.length;
   samples.forEach((s) => {
     const nx = s.dz, nz = -s.dx, pot = noise2(s.z * 0.7, s.x * 0.7) > 0.62 ? 0.84 : 1, salt = saltAt(s.x, s.z);
-    across.forEach((a, k) => { const x = s.x + nx * a * half, z = s.z + nz * a * half; p.push(x, h(x, z) + 0.035, z); u.push(x / 2.5, z / 2.5); const v = shade[k] * pot * tone * (1 + salt * 0.25); c.push(1.12 * v, 1.0 * v, 0.93 * v); });
+    across.forEach((a, k) => {
+      const x = s.x + nx * a * half, z = s.z + nz * a * half; p.push(x, h(x, z) + 0.035, z); u.push(x / 2.5, z / 2.5);
+      const crumble = Math.abs(a) > 0.6 && noise2(x * 3.1 + 7, z * 2.3) > -0.4, worn = noise2(x * 1.7 + 40, z * 1.1) > 0.4;
+      if (sealed && !crumble && !worn) {                                                                                     // grey seal under drifts of red dust
+        const v = (pot < 1 ? 0.7 : 1) * (0.85 + 0.15 * noise2(x * 6, z * 5)), dust = smooth(0.05, 0.8, noise2(x * 0.9 + 3, z * 0.45)) * 0.55 + (Math.abs(a) > 0.4 ? 0.12 : 0);
+        c.push(lerp(0.062, 0.36, dust) * v, lerp(0.054, 0.16, dust) * v, lerp(0.05, 0.095, dust) * v);
+      }
+      else if (sealed) { const v = shade[k] * (0.9 + 0.1 * noise2(x * 4, z * 4)); c.push(0.4 * v, 0.17 * v, 0.1 * v); }                                     // gone back to dirt
+      else { const v = shade[k] * pot * tone * (1 + salt * 0.25); c.push(1.12 * v, 1.0 * v, 0.93 * v); }
+    });
   });
   for (let r = 0; r < samples.length - 1; r++) for (let k = 0; k < n - 1; k++) { const a = r * n + k, b = a + 1, cc = a + n, d = cc + 1; ix.push(a, cc, b, b, cc, d); }
   const rg = new THREE.BufferGeometry();
   rg.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); rg.setAttribute('color', new THREE.Float32BufferAttribute(c, 3)); rg.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
   rg.setIndex(ix); rg.computeVertexNormals();
-  G.scene.add(mesh(rg, M.road, { cast: false }));
+  G.scene.add(mesh(rg, sealed ? M.seal : M.road, { cast: false }));
+}
+// a broken centre line, worn away in long stretches
+const lineMat = () => lineMat.m || (lineMat.m = new THREE.MeshStandardMaterial({ color: 0xd9cfae, roughness: 0.9, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
+function centreLine(samples) {
+  const p = [], ix = []; let run = 0;
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i], b = samples[i + 1]; run += Math.hypot(b.x - a.x, b.z - a.z);
+    if (Math.floor(run / 3) % 3 || noise2(a.x * 2.3 + 11, a.z * 0.6) > 0.3) continue;
+    const base = p.length / 3;
+    for (const s of [a, b]) for (const o of [-0.07, 0.07]) { const x = s.x + s.dz * o, z = s.z - s.dx * o; p.push(x, h(x, z) + 0.05, z); }
+    ix.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setIndex(ix); g.computeVertexNormals();
+  G.scene.add(mesh(g, lineMat(), { cast: false }));
+}
+// white guide posts with red reflectors, every fifty metres either side; plenty of them knocked flat or gone
+function guidePosts(samples, width) {
+  const R = rng(samples.length * 7), posts = [], refl = []; let run = 0, next = 25;
+  for (let i = 0; i < samples.length - 1; i++) {
+    const s = samples[i]; run += Math.hypot(samples[i + 1].x - s.x, samples[i + 1].z - s.z);
+    if (run < next) continue; next += 50;
+    for (const side of [-1, 1]) {
+      const roll = R(); if (roll < 0.18) continue;
+      const x = s.x + s.dz * side * (width / 2 + 1.1), z = s.z - s.dx * side * (width / 2 + 1.1), yaw = Math.atan2(s.dx, s.dz), tilt = roll < 0.34 ? 1.5 : roll < 0.48 ? (R() - 0.5) * 1.1 : (R() - 0.5) * 0.12, y = h(x, z);
+      const down = Math.abs(tilt) > 1;
+      posts.push([new THREE.BoxGeometry(0.1, 1.0, 0.08), MX(x, y + (down ? 0.05 : 0.5 * Math.cos(tilt)), z, 0, yaw, tilt)]);
+      if (!down) refl.push([new THREE.BoxGeometry(0.06, 0.12, 0.09), MX(x - Math.sin(tilt) * 0.42, y + 0.86 * Math.cos(tilt), z, 0, yaw, tilt)]);
+    }
+  }
+  G.scene.add(mesh(merge(posts), M.post)); G.scene.add(mesh(merge(refl), M.reflector, { cast: false }));
 }
 // a fainter side track from somewhere to somewhere
 export function track(x0, z0, x1, z1, w = 2.6) {
   const pts = [], steps = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 3), dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz), nx = -dz / L, nz = dx / L;
   for (let s = 0; s <= steps; s++) { const t = s / steps, bend = Math.sin(t * Math.PI) * 6; pts.push({ x: x0 + dx * t + nx * bend, z: z0 + dz * t + nz * bend, dx: dx / L, dz: dz / L }); }
   roadRibbon(pts, w, 0.95);
+}
+
+// ---------- signs: faded green road signs, and one somebody painted by hand ----------
+function signTexture(lines, { bg = '#2f5b40', fg = '#efeadc', hand = false, scratch = null } = {}) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d'), R = rng(lines.join('').length * 13);
+  x.fillStyle = bg; x.fillRect(0, 0, 256, 128);
+  if (!hand) { x.strokeStyle = fg; x.lineWidth = 5; x.strokeRect(8, 8, 240, 112); }
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
+  lines.forEach((l, k) => { x.font = hand ? `bold ${k ? 22 : 26}px "Comic Sans MS", cursive` : `bold ${k ? 24 : 30}px Arial, sans-serif`; x.fillText(l, 128, 64 + (k - (lines.length - 1) / 2) * (hand ? 32 : 36)); });
+  if (scratch) { x.strokeStyle = bg; x.lineWidth = 3; for (let k = 0; k < 7; k++) { x.beginPath(); x.moveTo(scratch[0] + R() * 8, scratch[1] - 12 + R() * 6); x.lineTo(scratch[0] + 40 + R() * 8, scratch[1] + 8 + R() * 6); x.stroke(); } }
+  for (let k = 0; k < 40; k++) { x.fillStyle = `rgba(${120 + R() * 50},${50 + R() * 30},${20 + R() * 20},${0.25 + R() * 0.5})`; x.beginPath(); x.arc(R() * 256, R() * 128, 1 + R() * (R() < 0.15 ? 12 : 4), 0, Math.PI * 2); x.fill(); }   // rust coming through
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function sign(x, z, yaw, lines, read, opts = {}) {
+  const { w = 2.0, ht = 1.0, post = 2.2, lean = 0, tag = ['X', NEW] } = opts, y = h(x, z), g = new THREE.Group(); g.position.set(x, y, z); g.rotation.set(0, yaw, lean); G.scene.add(g);
+  for (const s of w > 1.4 ? [-w * 0.35, w * 0.35] : [0]) { const p = mesh(new THREE.CylinderGeometry(0.05, 0.05, post + ht / 2, 6), M.rust); p.position.set(s, (post + ht / 2) / 2, -0.04); g.add(p); }
+  const face = new THREE.MeshStandardMaterial({ map: signTexture(lines, opts), roughness: 0.8, metalness: 0.2 });
+  const board = mesh(new THREE.BoxGeometry(w, ht, 0.04), [M.rust, M.rust, M.rust, M.rust, face, M.rust]); board.position.y = post; g.add(board);
+  blockers.push({ x, z, r: 0.3 });
+  addThing({ id: 'sign:' + lines[0], name: 'A sign', verb: 'Read', x, y: y + post, z, r: 2.4, prov: tag, use: () => hooks.bark(read, tag) });
+}
+function buildSigns() {
+  // the fork: straight on for the old main road and Tally Bore, left for the canyon (travellers come up from the south, so the faces look south)
+  sign(11, 188, Math.PI, ['BLEAK FLATS  18', 'TALLY BORE  5'], 'BLEAK FLATS 18. TALLY BORE 5. Somebody’s scratched a skull next to Tally Bore. Somebody else has scratched it out.', { lean: 0.06 });
+  sign(13.5, 196, Math.PI, ['\u2190 OLD CANYON RD'], 'OLD CANYON RD, and an arrow left, into the rock. Under it, in paint: DONT STOP UNDER THE GUMS.', { w: 1.8, ht: 0.55, post: 1.6, lean: -0.1 });
+  sign(29, 248, Math.atan2(-0.67, -0.74), ['DONT STOP', 'UNDER THE GUMS'], 'Painted on a sheet of tin and wired to a stake: DONT STOP UNDER THE GUMS. Good advice. The Field Guide agrees.', { w: 1.5, ht: 0.8, post: 1.1, bg: '#8a7a64', fg: '#3a1408', hand: true, lean: 0.12 });
+  sign(12, 500, Math.PI, ['TALLY BORE', 'POP. 41'], 'TALLY BORE. POP. 41. The number’s been scratched out, carefully, the way you’d cross a name off a list.', { scratch: [118, 82], lean: -0.05 });
+  sign(12, 905, Math.PI, ['BLEAK FLATS  9'], 'BLEAK FLATS 9. Nine clicks. The air already tastes of it.', { w: 1.8, ht: 0.6, lean: 0.04 });
 }
 
 // ---------- the canyon walls ----------
@@ -285,7 +365,7 @@ function buildCanyon() {
     const face = (z, dir) => {
       const base = pos.length / 3, ax = canyonAxisX(z), N = 26;
       for (let k = 0; k <= N; k++) for (let c = 0; c <= COLS; c++) {
-        const t = k / N, d = lerp(CANYON.half + wallOffset(z, (c / COLS) * CANYON.H, side), 118, t), y = (c / COLS) * CANYON.H, x = ax + side * d, zz = z + dir * (Math.sin(t * 9 + y * 0.2) * 1.2 + 0.6);
+        const t = k / N, d = lerp(CANYON.half + wallOffset(z, (c / COLS) * CANYON.H, side), mesaOuter(side) - 1, t), y = (c / COLS) * CANYON.H, x = ax + side * d, zz = z + dir * (Math.sin(t * 9 + y * 0.2) * 1.2 + 0.6);
         pos.push(x, y, zz); uv.push(x / 4, y / 4); strataColour(y, zz, _c).multiplyScalar(1.2); col.push(_c.r, _c.g, _c.b);
       }
       for (let k = 0; k < N; k++) for (let c = 0; c < COLS; c++) { const a = base + k * (COLS + 1) + c, b = a + 1, cc = a + COLS + 1, d = cc + 1; idx.push(a, b, cc, b, d, cc); }
@@ -299,6 +379,29 @@ function buildCanyon() {
   M.strata.side = THREE.DoubleSide;
   // the canyon holds shade along its foot; it's cooler than the open plain, if not by much
   for (let z = CANYON.z0 + 10; z < CANYON.z1; z += 20) shades.push({ x: canyonAxisX(z), z, r: CANYON.half, why: 'canyon', soft: true });
+}
+
+// ---------- the mesa's eastern escarpment: a banded cliff the main road runs under, scree at its foot ----------
+function buildEscarpment() {
+  const pos = [], col = [], uv = [], idx = [], ROWS = Math.ceil((CANYON.z1 - CANYON.z0 + 40) / 2), COLS = 18, o = mesaOuter(-1);
+  for (let r = 0; r <= ROWS; r++) {
+    const z = CANYON.z0 - 20 + r * 2, ax = canyonAxisX(clamp(z, CANYON.z0, CANYON.z1)), cw = canyonWeight(z);
+    for (let c = 0; c <= COLS; c++) {
+      const v = c / COLS, y = v * (CANYON.H + 2) * cw - 0.6, ledge = Math.round(Math.sin(y * 0.5 + z * 0.013) * 1.4) / 1.4;
+      const d = o + 1.4 + (1 - v) * 5.6 + 0.9 * Math.sin(z * 0.11 + y * 0.35) + 0.5 * ledge;
+      pos.push(ax - d, y, z); uv.push(z / 4, y / 4);
+      strataColour(y, z, _c).multiplyScalar(1.2 * (0.72 + 0.28 * smooth(0, 10, y))); col.push(_c.r, _c.g, _c.b);
+    }
+  }
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) { const a = r * (COLS + 1) + c, b = a + 1, cc = a + COLS + 1, d = cc + 1; idx.push(a, cc, b, b, cc, d); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  G.scene.add(mesh(g, M.strata));
+  // scree: blocks that came off it, and smaller stuff fanned out below
+  const R = rng(616), rocks = [], grp = new THREE.Group();
+  for (let z = CANYON.z0 + 6; z < CANYON.z1 - 6; z += 2.2) { if (canyonWeight(z) < 0.6) continue; const n = R() < 0.35 ? 2 : 1; for (let k = 0; k < n; k++) { const x = canyonAxisX(z) - o - 7.5 - R() * 5, big = R() < 0.18; rocks.push([x, z + R() * 2, big ? 1.4 + R() * 1.6 : 0.3 + R() * 0.7, R()]); } }
+  addRocks(grp, rocks, M.rock); G.scene.add(grp);
 }
 
 // ---------- the salt pans: white crust, cracked into plates ----------
@@ -319,7 +422,7 @@ function buildSaltPans() {
   x.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
   const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3 });
-  const pos = [], uv = [], idx = [], X0 = -130, X1 = 40, Z0 = 230, Z1 = 870, S = 4;
+  const pos = [], uv = [], idx = [], X0 = -190, X1 = -20, Z0 = 230, Z1 = 870, S = 4;
   const NX = (X1 - X0) / S, NZ = (Z1 - Z0) / S, colA = [];
   for (let j = 0; j <= NZ; j++) for (let k = 0; k <= NX; k++) { const xx = X0 + k * S, zz = Z0 + j * S; pos.push(xx, h(xx, zz) + 0.04, zz); uv.push(xx / 7, zz / 7); colA.push(1, 1, 1, saltAt(xx, zz)); }
   for (let j = 0; j < NZ; j++) for (let k = 0; k < NX; k++) { const a = j * (NX + 1) + k, b = a + 1, cc = a + NX + 1, dd = cc + 1; idx.push(a, cc, b, b, cc, dd); }
@@ -329,7 +432,7 @@ function buildSaltPans() {
   mat.vertexColors = true; mat.vertexAlphas = true;
   const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = 1; G.scene.add(m);
   // the liquid mirage that hangs over them in the heat
-  for (const [mx, mz] of [[-40, 430], [-30, 600], [-36, 720], [-20, 330]]) {
+  for (const [mx, mz] of [[-96, 430], [-104, 600], [-98, 720], [-86, 340]]) {
     const mm = new THREE.Mesh(new THREE.PlaneGeometry(70, 22), M.mirage.clone()); mm.rotation.x = -Math.PI / 2; mm.position.set(mx, 0.3, mz); mm.renderOrder = 2; G.scene.add(mm);
     W.mirages.push({ m: mm, x: mx, z: mz, pans: true });
   }
@@ -381,15 +484,24 @@ function buildTransmissionLine() {
 
 // ---------- the pipeline, west of the open road: on trestles, leaking where it's broken ----------
 function buildPipeline() {
-  const parts = [];
-  for (const route of [ROUTES.gate, ROUTES.north]) {
-    for (let i = 0; i < route.length - 7; i += 7) {
-      const a = route[i], b = route[i + 7], ax = a.x + a.dz * 24, az = a.z - a.dx * 24, bx = b.x + b.dz * 24, bz = b.z - b.dx * 24, ya = h(ax, az), yb = h(bx, bz);
-      if (canyonWeight(az) > 0) continue;
+  const parts = [], fallen = [];
+  for (const [name, route, off] of [['gate', ROUTES.gate, 24], ['main', ROUTES.main, -24], ['north', ROUTES.north, 24]]) {
+    for (let i = 0, k = 0; i < route.length - 7; i += 7, k++) {
+      const a = route[i], b = route[i + 7], ax = a.x + a.dz * off, az = a.z - a.dx * off, bx = b.x + b.dz * off, bz = b.z - b.dx * off, ya = h(ax, az), yb = h(bx, bz);
+      if (canyonWeight(az) > 0 && Math.abs(ax - canyonAxisX(az)) < mesaOuter(ax > canyonAxisX(az) ? 1 : -1) + 16) continue;   // not over the mesa
+      if (name === 'main' && Math.hypot(ax - TALLY.pump.x, az - TALLY.pump.z) < 5) continue;                                     // the pump house stands here
+      const fail = name !== 'main' ? (Math.floor(az / 14) % 19 === 7 ? 'leak' : '') : k % 10 === 3 ? 'fallen' : k % 16 === 9 ? 'burst' : k % 7 === 5 ? 'rusted' : k % 19 === 12 ? 'leak' : '';
+      if (fail === 'fallen') {
+        // the trestle gave way: it lies on its side, and the section it held lies in the dirt, kinked
+        fallen.push([new THREE.BoxGeometry(0.5, 1.6, 0.5), MX(ax + 0.6, ya + 0.25, az, 0, 0, 1.5)], [new THREE.BoxGeometry(1.2, 0.12, 0.5), MX(ax + 1.4, ya + 0.3, az, 0, 0, 1.5)]);
+        const mx = lerp(ax, bx, 0.45), mz = lerp(az, bz, 0.45);
+        fallen.push([new THREE.CylinderGeometry(0.34, 0.34, 1, 12), rodMX([ax, ya + 1.3, az], [mx, h(mx, mz) + 0.34, mz])], [new THREE.CylinderGeometry(0.34, 0.34, 1, 12), rodMX([mx, h(mx, mz) + 0.34, mz], [bx, yb + 1.95, bz])]);
+        blockers.push({ x: mx, z: mz, r: 0.6 });
+        continue;
+      }
       parts.push([new THREE.BoxGeometry(0.5, 1.6, 0.5), MX(ax, ya + 0.8, az)], [new THREE.BoxGeometry(1.2, 0.12, 0.5), MX(ax, ya + 1.6, az)]);
       blockers.push({ x: ax, z: az, r: 0.45 });
-      const broken = Math.floor(az / 14) % 19 === 7;
-      if (broken) {
+      if (fail === 'leak') {
         parts.push([new THREE.CylinderGeometry(0.34, 0.34, 1, 12), rodMX([ax, ya + 1.95, az], [lerp(ax, bx, 0.42), lerp(ya, yb, 0.42) + 1.6, lerp(az, bz, 0.42)])]);
         const lx = lerp(ax, bx, 0.5), lz = lerp(az, bz, 0.5);
         const pool = mesh(new THREE.CircleGeometry(1.4, 20), M.water, { cast: false }); pool.rotation.x = -Math.PI / 2; pool.position.set(lx, h(lx, lz) + 0.04, lz); G.scene.add(pool);
@@ -398,9 +510,25 @@ function buildPipeline() {
       }
       parts.push([new THREE.CylinderGeometry(0.34, 0.34, 1, 12), rodMX([ax, ya + 1.95, az], [bx, yb + 1.95, bz])]);
       if (i % 35 === 0) parts.push([new THREE.TorusGeometry(0.37, 0.06, 6, 14), MX(ax, ya + 1.95, az, 0, Math.atan2(bx - ax, bz - az))]);
+      if (fail === 'burst') {
+        // a blown flange, still under a little pressure: a fan of spray, a pool, a green ring of weed round it
+        const fx = lerp(ax, bx, 0.5), fz = lerp(az, bz, 0.5), fy = lerp(ya, yb, 0.5) + 1.95;
+        parts.push([new THREE.TorusGeometry(0.42, 0.1, 6, 14), MX(fx, fy, fz, 0, Math.atan2(bx - ax, bz - az))]);
+        const px = fx - off * 0.06, pz = fz;
+        const pool = mesh(new THREE.CircleGeometry(2.6, 24), M.water, { cast: false }); pool.rotation.x = -Math.PI / 2; pool.position.set(px, h(px, pz) + 0.04, pz); G.scene.add(pool);
+        W.sprays.push({ x: fx, y: fy + 0.25, z: fz, dx: -Math.sign(off), dz: 0 });
+        W.leaks.push({ x: px, z: pz, name: 'Burst main', line: 'Out of a blown flange, straight into the bag. Rust, and something like pennies. Wet.' });
+      }
+      if (fail === 'rusted') {
+        // rusted through: a weep of water, a dark stain under it
+        const fx = lerp(ax, bx, 0.3), fz = lerp(az, bz, 0.3);
+        const st = mesh(new THREE.CircleGeometry(0.9, 14), M.stain, { cast: false }); st.rotation.x = -Math.PI / 2; st.position.set(fx, h(fx, fz) + 0.05, fz); G.scene.add(st);
+        W.drips = W.drips || []; W.drips.push({ x: fx, y: lerp(ya, yb, 0.3) + 1.6, z: fz });
+      }
     }
   }
   G.scene.add(mesh(planarUV(merge(parts), 1.5), M.rust));
+  if (fallen.length) G.scene.add(mesh(planarUV(merge(fallen), 1.5), M.rust));
 }
 
 // ---------- mesas: the far edge of things ----------

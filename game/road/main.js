@@ -17,10 +17,11 @@
 // "Non-existent" (Chapter Two), and it only takes the edge off the flies.
 // Units are metres. The road runs north along +z; east is −x.
 // ============================================================
-import { THREE, clamp, lerp, smooth, esc, reduceMotion, valueOf, TAG_NAME, CH1, CH2, NEW, tagHTML, G, S, P, W, things, blockers, shades, hooks, addThing, bark, once, meet, SPECIES, FINDS, RELICS, SWAY, M, mesh, glowTexture, initMaterials } from './core.js';
+import { THREE, clamp, lerp, smooth, esc, reduceMotion, valueOf, TAG_NAME, GUIDE, CH1, CH2, NEW, tagHTML, G, S, P, W, things, blockers, shades, hooks, addThing, bark, once, meet, SPECIES, FINDS, RELICS, SWAY, M, mesh, glowTexture, initMaterials } from './core.js';
 import { LORE_KM, ARRIVE_Z, HALF_W, h, placeAt, nearestRoad, saltAt, landBlocked, nearbySpinifex, buildLand, RESERVED, ADIT } from './land.js';
 import { reserveLife, buildLife, updateLife, sulphurBlast, SWARM, STRIDERS } from './life.js';
 import { CAVES, buildCaves, enterCave, caveConstrain, caveFloor, updateCave } from './caves.js';
+import { reserveMainRoad, buildMainRoad, updateMainRoad } from './mainroad.js';
 import { buildTractor as buildTractorModel } from '../shared/tractor.js';
 import { ideas, IDEA_KINDS, connectIdeas, addIdea, deleteIdea, exportIdeas, ideaWhere } from '../shared/notebook.js';
 
@@ -125,6 +126,8 @@ const sfx = {
   door: () => tone({ type: 'sawtooth', f: 180, f2: 260, dur: 0.4, gain: 0.03 }),
   radio: () => { noiseHit({ f: 2400, q: 0.6, dur: 1.4, gain: 0.08 }); tone({ type: 'square', f: 880, dur: 0.06, gain: 0.02 }); },
   drip: () => tone({ f: 1500 + Math.random() * 500, f2: 800, dur: 0.12, gain: 0.03 }),
+  zap: (v = 1) => { for (let i = 0; i < 5; i++) noiseHit({ type: 'highpass', f: 2500 + Math.random() * 3000, q: 2, dur: 0.04 + Math.random() * 0.05, gain: 0.22 * v, delay: i * 0.035 * Math.random() * 3 }); tone({ type: 'square', f: 100, dur: 0.18, gain: 0.03 * v }); },   // a live wire arcing
+  caw: () => { for (const [d, f] of [[0, 640], [0.28, 590], [0.62, 610]]) tone({ type: 'sawtooth', f, f2: f * 0.7, dur: 0.22, gain: 0.025, delay: d }); },
 };
 
 // ---------- the HUD ----------
@@ -303,7 +306,7 @@ const RADIO = [
   '…Flats relay, Flats relay… water truck’s held at the Silos till noon… repeat, noon…',
   '…anyone on the north road: strider walking the salt this morning. Hold your speed. Don’t speed up, don’t slow down…',
   '…accounts in arrears will be visited in person. H. R. Cogswell and Associates thanks you for your…',
-  '…canyon traffic, the gums are hungry. Go slow, eyes down…',
+  '…canyon traffic: don’t stop under the gums. Whatever the heat, don’t stop…',
   '…Rusty Cog’s open, and the stew is technically food…',
   '…south gate: entry tax is five bits, or three ounces of raw water. Have it ready…',
   '…static, and under it, very faint, somebody humming…',
@@ -333,15 +336,15 @@ function sulphur() {
 // ---------- flies, smoke: small moving things ----------
 // a few gossip-flies find Jacob on foot near the dead and the abandoned; the swarm at the wreck is life.js's
 const flySwarms = [];
-const FLY = new THREE.SphereGeometry(0.03, 10, 8);
+const FLY = new THREE.SphereGeometry(0.045, 10, 8);
 function spawnSwarm(x, z, n = 4) {
   if (flySwarms.length > 2) return;
   const flies = [];
   for (let k = 0; k < n; k++) {
     const f = new THREE.Group(); scene.add(f);
-    const b = mesh(FLY, M.fly, { cast: false }); b.scale.set(1, 0.8, 1.6); f.add(b);   // thumb-sized, oil-slick (Chapter One)
+    const b = mesh(FLY, M.fly, { cast: false }); b.scale.set(1, 0.8, 1.5); f.add(b);   // fist-sized, oil-slick (the Field Guide)
     const wings = [];
-    for (const s of [-1, 1]) { const w = mesh(new THREE.PlaneGeometry(0.06, 0.035), M.wing, { cast: false, receive: false }); w.position.set(s * 0.035, 0.02, 0); w.userData.s = s; f.add(w); wings.push(w); }
+    for (const s of [-1, 1]) { const w = mesh(new THREE.PlaneGeometry(0.09, 0.05), M.wing, { cast: false, receive: false }); w.position.set(s * 0.05, 0.03, 0); w.userData.s = s; f.add(w); wings.push(w); }
     f.position.set(x, h(x, z) + 1.5, z);
     flies.push({ f, wings, ph: Math.random() * Math.PI * 2, r: 1.1 + Math.random() * 0.8 });
   }
@@ -371,7 +374,7 @@ function updateFlies(dt) {
       sw.whisperIn = 6 + Math.random() * 4;
       const [w, tag, src] = WHISPERS[Math.floor(Math.random() * WHISPERS.length)];
       whisper(w, [tag, src], 2600);
-      once('flies', S.earcage ? 'Gossip-flies. The ear-cage keeps the worst of it out. Most of it.' : 'Gossip-flies. Thumb-sized, oil-slick, and they talk. Back aboard and leave them in the dust.', ['C', CH1]);
+      once('flies', S.earcage ? 'Gossip-flies. The ear-cage keeps the worst of it out. Most of it.' : 'Gossip-flies. Fist-sized, oil-slick, and they talk. Back aboard and leave them in the dust.', ['C', GUIDE]);
     }
     if (sw.life <= 0 || sw.lost > 5) {
       if (sw.lost > 5) toast('The gossip-flies fall behind');
@@ -572,7 +575,7 @@ function driveTractor(dt) {
   const fwd = pressed('KeyW', 'ArrowUp') - pressed('KeyS', 'ArrowDown');
   const steer = pressed('KeyA', 'ArrowLeft') - pressed('KeyD', 'ArrowRight');
   const n = nearestRoad(tractor.x, tractor.z, 1), salt = saltAt(tractor.x, tractor.z);
-  const off = !n.s || n.d > (n.s.route === 'gate' || n.s.route === 'north' ? 4.6 : 3.2);
+  const off = !n.s || n.d > (n.s.route === 'canyon' ? 3.2 : 4.6);
   const crush = nearbySpinifex(tractor.x, tractor.z).length ? 0.85 : 1;
   const max = SPEED.tractor * (off ? (salt > 0.5 ? SPEED.salt : SPEED.offroad) : 1) * crush * (G.redline > 0 ? 1.3 : 1);
   if (tractor.stall > 0) { tractor.stall -= dt; tractor.speed = lerp(tractor.speed, 0, clamp(dt * 3, 0, 1)); }
@@ -681,7 +684,7 @@ function survive(dt) {
   const drain = c ? 0.025 : S.inTractor ? 0.014 : (P.speed > 1.6 ? 0.07 : 0.04);
   S.water = Math.max(0, S.water - dt * drain * heat * (shade && !shade.soft ? 0.3 : 1));
   if (S.water < 20) { S.health -= dt * 0.5; once('thirst', 'Mouth like the road. Drink, Jacob. F.', ['X', NEW]); }
-  const calm = c ? 1.0 : S.inTractor ? 0.8 : shade && shade.why !== 'gum' ? 1.2 : 0.12;     // the tractor and the cool of the rock settle him
+  const calm = c ? 1.0 : S.inTractor ? 0.8 : shade ? 1.2 : 0.12;     // the tractor, the cool of the rock and any shade settle him (a gum's too: that's its bait)
   S.stress = Math.max(0, S.stress - dt * calm);
   if (S.stress > 85) S.health -= dt * 0.4;
   if (S.health <= 0) die('heat');
@@ -690,7 +693,7 @@ function survive(dt) {
 // ---------- endings ----------
 function die(why) {
   if (S.dead) return; S.dead = true; S.paused = true; releaseLock();
-  const cause = { stalker: 'Something came down from the rocks.', gum: 'He let it taste his fear.', strider: 'The strider weighed him, and decided.', bled: 'The spinifex drank its fill.', bite: 'Something in a web, in the dark.', heat: 'The heat, the thirst and the voices.' }[why] || 'The Waste.';
+  const cause = { stalker: 'Something came down from the rocks.', gum: 'He sat down in the shade, and let himself relax.', strider: 'The strider weighed him, and decided.', bled: 'The spinifex drank its fill.', bite: 'Something in a web, in the dark.', wire: 'A wire that should have been dead years ago.', house: 'A house that was only waiting for somebody to stand under it.', heat: 'The heat, the thirst and the voices.' }[why] || 'The Waste.';
   ui.endCard.innerHTML = `<div class="kicker">The Red Waste</div><h1>The Waste wins this time.</h1><p class="lede">${esc(cause)} The road stays where it is, indifferent.</p>
     <div class="actions"><button class="btn primary" id="end-retry">Wake up back on the tractor</button><button class="btn" id="end-restart">Start the road again</button><button class="btn" id="end-ideas">Jot what happened</button></div>`;
   ui.end.hidden = false;
@@ -738,7 +741,7 @@ function frame(ts) {
   if (S.started && !S.paused) {
     S.time += dt * TIME_SCALE; G.time += dt;
     if (S.inTractor) driveTractor(dt); else walk(dt);
-    if (inCave()) updateCave(dt); else updateLife(dt);
+    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); }
     hazards(dt); survive(dt);
     target = pickTarget();
     if (!inCave() && (S.inTractor ? tractor.z : P.z) > ARRIVE_Z && !S.flags.arrived) arrive();
@@ -791,10 +794,10 @@ function begin() {
 async function boot() {
   resize();
   const tick = DEBUG ? (label) => console.log(`[road] ${label} ${Math.round(performance.now())} ms`) : () => {};
-  reserveLife(); RESERVED.push({ x: ADIT.x + 3, z: ADIT.z, r: 7 });
-  tick('start'); buildLand(); tick('land'); buildLife(); tick('life'); buildCaves(); tick('caves');
+  reserveLife(); reserveMainRoad(); RESERVED.push({ x: ADIT.x + 3, z: ADIT.z, r: 7 });
+  tick('start'); buildLand(); tick('land'); buildLife(); tick('life'); buildMainRoad(); tick('main road'); buildCaves(); tick('caves');
   tractor = G.tractor = buildTractor(); addTractorThings();
-  for (const l of W.leaks) waterThing({ id: 'leak' + Math.round(l.z), name: 'Pipeline leak', x: l.x, z: l.z, r: 2.2, line: 'Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', prov: ['X', 'the old water pipeline: ' + NEW] });
+  for (const l of W.leaks) waterThing({ id: 'leak' + Math.round(l.z), name: l.name || 'Pipeline leak', x: l.x, z: l.z, r: 2.2, line: l.line || 'Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', prov: ['X', 'the old water pipeline: ' + NEW] });
   for (const w of W.water || []) waterThing({ ...w, y: w.y, r: 1.6 });
   tractor.x = 0; tractor.z = 8; P.x = tractor.x; P.z = tractor.z;
   { updateSun(); const pm = new THREE.PMREMGenerator(renderer), env = new THREE.Scene(), s = sky.clone(); s.position.set(0, 0, 0); s.scale.setScalar(0.02); env.add(s); scene.environment = pm.fromScene(env, 0.04).texture; pm.dispose(); }   // the sky, shrunk inside the capture's far plane

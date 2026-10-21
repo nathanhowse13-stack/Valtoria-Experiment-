@@ -14,8 +14,9 @@ game/
   yard/vendor/      Three.js r160, kept locally so the page works offline
   road.html         The Road to Bleak Flats (Chapter Two): markup and styles
   road/core.js      the road's shared state, materials, field notes and finds
-  road/land.js      the land: the fork, the canyon, the salt pans, the transmission line, the outskirts, the walls
+  road/land.js      the land: the fork, the canyon, the old main road, the salt pans, the pipeline, the outskirts, the walls
   road/life.js      what lives on it: gums, spinifex, striders, boars, the wreck and its swarm, and the rest
+  road/mainroad.js  along the old main road: the falling power line, Tally Bore, burst mains, crows and hounds
   road/caves.js     three shallow caves to walk into, and the relics in them
   road/main.js      the player: the tractor and Jacob on foot, the camera, HUD, notebook, sound, survival
   shared/notebook.js  the idea notebook all three pages write to
@@ -31,14 +32,21 @@ page clears both saves.
 
 Finishing the yard's chores and choosing **Load up and head to town** drives the tractor out of the north
 gate onto `road.html?from=yard`, carrying the clock and the load. The road is 1.8 km of playable land
-standing for Valtoria's twenty clicks, laid out the way Chapter Two drives it:
+standing for Valtoria's twenty clicks. It borrows Chapter Two's drive for flavour, but this is a
+sandbox for developing ideas before the novel: the **Survival Field Guide** is the authority on what
+lives here and how it behaves, and where the chapters disagree with it, the Guide wins.
 
-- **The fork.** The Old Canyon Road banks left (west) into a canyon of rusted iron-shale and sandstone
-  strata, longer but sheltered. The direct track runs straight across the salt pans.
+- **The fork.** Signposts at the fork: the Old Canyon Road banks left (west) into a canyon of rusted
+  iron-shale and sandstone strata, the interesting way to town. The old main road runs straight on.
 - **The canyon** is lined with Gallows-Gums, then choked with Razor-Spinifex with one game trail
   through it. There are two caves in its walls.
-- **The salt pans** are white crust cracked into plates, with liquid mirages. A salt-strider hunts here
-  by day, and it's hotter, because the pans throw the sun back up.
+- **The old main road** is what's left of a sealed road: broken bitumen under red dust, a faded centre
+  line, knocked-over guide posts. It runs under the canyon mesa's eastern escarpment, along the edge of
+  the salt pans. It's littered with what the old world left: a power line falling down pole by pole,
+  a pipeline failing section by section, and Tally Bore, a hamlet of houses coming apart.
+- **The salt pans** lie east of the main road: white crust cracked into plates, with liquid mirages.
+  From the road you'll see a salt-strider out on the salt, keeping abreast. Drive or walk onto the
+  pans and it hunts you. It's hotter out there, because the pans throw the sun back up.
 - **The breakdown** is under the skeleton of the old transmission line: a transport truck on its side,
   its boiler smoking, a scrapper on his knees, and a gossip-fly swarm mining him.
 - **The outskirts** have boreholes, two strip mines (with an old adit in the big one) and a ridge to the
@@ -49,6 +57,41 @@ standing for Valtoria's twenty clicks, laid out the way Chapter Two drives it:
 
 Off the road there are ruined shacks, the pipeline and its leaks, a Judas-Wattle, a Miser-Boab, an
 Iron-Bark Sentinel, Argus-Bushes, compass-weed, thorny-devils and jaw-jaws.
+
+### The old main road
+
+Everything along it is Experimental, new on the road.
+
+- **The power line** has a pole every 38 m from the gate to the walls, on the road's west side.
+  About half stand. The rest lean, have snapped (a stump, with the top lying beside it), or lie in
+  the dirt with their wires dragged down. Near the bend before Tally Bore, a pole has come down
+  across the edge of the road, and one of its wires is still live. It lies across the road, arcing
+  and crackling. On foot it bites (18 damage and a stun). The tractor rolls over it on leather
+  wheels and only throws sparks. A green glass insulator lies by the fallen pole.
+- **The pipeline** runs east of the main road and fails every way a pipe can: trestles toppled with
+  their sections kinked in the dirt, sections rusted through and weeping, plain leaks, and burst
+  mains still throwing a fan of spray. Burst mains and leaks are water sources.
+- **Tally Bore** is a hamlet built round a pumping station on the pipeline, abandoned when the pipe
+  failed:
+  - **Four houses** in different states of coming apart: one racked over on its stumps, one with the
+    roof fallen into the room, one only a front wall and a chimney, and one with a verandah.
+  - **The verandah** groans when you stand under it, and comes down if you stay. A chair invites you
+    to sit.
+  - **The pump house** has its valve wheel (turn it and the burst main sprays higher) and a logbook.
+  - **The rest:** a windmill still turning with a third of its blades gone, a water tower down on
+    buckled legs, a car up on blocks being stripped by jaw-jaws, a half-fallen fence, a rainwater
+    tank, and a Gallows-Gum, the best shade in town.
+- **Things to see** along the road:
+  - **Tally-Crows** sit in rows on the sagging wires, every head turning as you pass. They lift and
+    circle when you come close, then settle again behind you.
+  - **Hollow-Hounds** keep pace out in the scrub and are only ever there at the corner of the eye.
+    Look straight at one and it isn't there.
+  - **Others:** razor-back boars rooting by the road, thorny-devils on the warm seal, and the strider
+    out on the pans.
+
+  The crows and the hounds are the game's own animals, made in the spirit of the Field Guide (the
+  Waste's life is made of fears, not ordinary outback animals). They're tagged Experimental, not
+  Canon. There are seventeen finds now, three of them on the main road.
 
 ### The caves
 
@@ -70,40 +113,42 @@ page hints where the missing ones are.
 
 ### The road's life
 
-Where Chapter Two describes a creature, it behaves as the book says. Where only the Field Guide or Chapter
-One does, it follows them. The tells and counters are the game's own and are tagged Experimental.
+The Field Guide decides what each species does. Where the chapters add detail that doesn't contradict
+it (a look, a sound, a line), that's kept as flavour. The tells and counters are the game's own and are
+tagged Experimental.
 
 | Species | What it does (Canon) | The tell and the counter |
 | --- | --- | --- |
-| Gallows-Gum (Ch. 2) | tastes the anima of fear; vibration frenzies it; looking up is acknowledgement | the limb creaks and angles down; go slow, stay calm, don't look up |
+| Gallows-Gum (Guide; the look is Ch. 2's) | the best shade on the road; waits for someone to relax in it, then strikes | stop in its shade and settle, and the limb creaks and angles down; keep moving, stay on edge, never park under one |
 | Razor-Spinifex (Ch. 2) | glass blades; senses movement, thrashes, drinks the blood it cuts; lashes the hull ("schwick") | creep the trail, then punch it once you're clear of the gums; on foot, walk |
-| Salt-Strider (Ch. 2) | raptor-like, bone-furred, blinks fifty feet at a time; hunts the open flats | hold a constant, boring speed and it weighs you, finds you too metallic and leaves |
-| Gossip-Flies (Ch. 1–2) | thumb-sized, oil-slick; mimic fears; a swarm mines a mind | outrun the small ones; Sulphur-Salts in the intake (G), then redline it, breaks a swarm |
+| Salt-Strider (Guide; the look and the blink are Ch. 2's) | walks the salt; raptor-like, bone-furred, blinks fifty feet at a time | seen from the main road, it only watches; on the salt, hold a constant, boring speed and it weighs you, finds you too metallic and leaves |
+| Gossip-Flies (Guide; the swarm is Ch. 2's) | fist-sized, oil-slick; whisper fears back; a swarm mines a mind | outrun the small ones; Sulphur-Salts in the intake (G), then redline it, breaks a swarm |
 | Razor-Back Boar (Ch. 2) | one running scared means something spooked it | a warning that a strider is near |
 | Compass-Weed (Ch. 1, Guide) | scrambles the compass and the sense of direction | steer by the wires, the pipeline and the sun |
 | Drop-Stalker (Guide) | ambushes from above, around rocky overhangs | clicking from the rocks; look up and hold its eye |
 | Judas-Wattle, Argus-Bush, Truth-Rot (Guide) | Golden Haze; eyes that record; glows at a lie | |
 | Thorny-devils, jaw-jaws, Tunnel-Webs (Farm sketch) | Plausible | jaw-jaws strip the ignition wiring of a parked tractor |
 
-Heat climbs with the clock, so water matters. Refill at pipeline leaks, the first shack's tank and the
-seep. The caves are cool.
+Heat climbs with the clock, so water matters. Refill at pipeline leaks and burst mains, the shack and
+Tally Bore tanks, and the seep. The caves are cool.
 
 The road's systems began in the *Road Relic v0.5* prototype (route length, pacing, power line, pipeline,
 ruins, vitals) and were rebuilt in the game's own renderer, controls, saves, tags and notebook.
 Rustbucket is Jacob's bull; the tractor has no name.
 
-#### Where the books and the earlier notes disagree
+#### Where the books and the Field Guide disagree
 
-These were settled in favour of the chapters. Each is worth a look by the author:
-- **Gallows-Gums.** The road notes said they wait for someone to *relax*. Chapter Two has them feed
-  on fear and frenzy at vibration. The road now follows Chapter Two.
-- **Gossip-flies.** The Field Guide note had them fist-sized; Chapters One and Two say thumb-sized.
-- **Salt-strider.** The prototype had a tall stilt-walker that you stop for. Chapter Two's strider is
-  a raptor that blinks, and the counter is a constant speed, not stopping.
-- **The anima shield.** It used to keep the flies out entirely. Chapter Two's gauge reads
-  "Non-existent", so aboard, the flies' pressure is only cut by 40 per cent.
-- **Bleak Flats.** The prototype's crater rim and Scream-Pea fence are now Chapter Two's walls, stacks
-  and south gate.
+The Field Guide wins on species and behaviour. The chapters are flavour.
+- **Gallows-Gums.** Chapter Two has them feed on fear and frenzy at vibration. The Guide has them
+  wait for someone to relax. The road follows the Guide, keeping Chapter Two's pale, peeling,
+  red-under-the-bark look.
+- **Gossip-flies.** Chapters One and Two say thumb-sized; the Guide says fist-sized. They're fist-sized.
+- **Salt-strider.** It's in the Guide, but beyond its walking the salt, its look and its blink are
+  Chapter Two's. Nothing in the Guide, as far as these notes go, contradicts them.
+- **Not about species, so the chapters stand:** the anima shield ("Non-existent" on the gauge, so it
+  only cuts the flies' pressure by 40 per cent) and Bleak Flats' walls, stacks and south gate. If the
+  Guide describes Bleak Flats differently (the prototype had a crater rim and a Scream-Pea fence),
+  that's an easy swap.
 
 ### The tractor
 
