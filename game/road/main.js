@@ -30,7 +30,10 @@ import { CAVES, buildCaves, enterCave, caveConstrain, caveFloor, updateCave } fr
 import { reserveMainRoad, buildMainRoad, updateMainRoad } from './mainroad.js';
 import { WIND, buildAir, updateAir, setParticleScale, footfall, airState } from './air.js';
 import { buildDetail, updateDetail, setDetailQuality } from './detail.js';
-import { reserveProps, buildProps, updateProps, primaryAction, propState } from './props.js';
+import { reserveProps, buildProps, updateProps, primaryAction, canThrow, propState } from './props.js';
+import { HANDS, buildHands, playHand, updateHands } from './hands.js';
+import { buildFar, updateFar } from './far.js';
+import { buildRooms, updateRooms } from './rooms.js';
 import { audio, initAudio, sfx, updateAudio, setMuted } from './sound.js';
 import { input, bindInput, pollInput, takeLook, saveSettings, rumble, navFocus, releaseLock } from './input.js';
 import { buildJacob } from './jacob.js';
@@ -63,7 +66,7 @@ renderer.shadowMap.type = THREE.PCFShadowMap;          // PCF with a radius: sof
 const post = makePost(renderer);
 const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0xd2a07e, 0.0021);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 2400);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 6000);          // far enough for the outer ranges, 3 km past the land (far.js)
 camera.rotation.order = 'YXZ';
 const view = { baseFov: 60, camYaw: 0, camPos: new THREE.Vector3(), eyeY: 0, lookIdle: 0, lastX: 0, lastZ: 0, chunkFar: 560 };
 const hemi = new THREE.HemisphereLight(0xb8c0d8, 0x8a4426, 0.5);   // the sky's blue and the dirt's red bounce: shade out here is never black
@@ -446,7 +449,7 @@ function use() {
     once('down', 'Down off the tractor. The air tastes of hot iron, and everything out here has noticed.', ['X', NEW]);
     updateVitals(); return;
   }
-  if (target) { target.use(); rumble(0.2, 0.1, 60); return; }
+  if (target) { playHand('reach'); target.use(); rumble(0.2, 0.1, 60); return; }
   if (!inCave() && Math.hypot(P.x - tractor.x, P.z - tractor.z) < 3.4) {
     S.inTractor = true; P.look = 0; view.camYaw = tractor.yaw; sfx.door(); tractor.model.spit(20);
     if (tractor.wired) { tractor.wired = 0; tractor.stall = 2.5; bark('Dead. Jaw-jaws had at the ignition wiring. Twist it back together… there. She coughs, and catches.', ['P', 'the Farm of Rust sketch']); }
@@ -457,9 +460,9 @@ function use() {
 }
 function drink() {
   if (S.water > 92) { bark('Not thirsty yet. Out here you ration even that.', ['X', NEW]); return; }
-  if (S.inTractor && S.can) { S.can--; S.water = Math.min(100, S.water + 30); sfx.gulp(); updateVitals(); return; }   // at the wheel, off the canister's tap
+  if (S.inTractor && S.can) { S.can--; S.water = Math.min(100, S.water + 30); setTimeout(() => sfx.gulp(), 400); if (S.view === 'seat') playHand('drink'); updateVitals(); return; }   // at the wheel, off the canister's tap
   if (!S.sips) { once('dry', S.can ? 'Bag’s empty. There’s some in the canister on the tractor.' : 'Bag’s empty, canister too. The pipeline leaks, if you know where.', ['X', NEW]); return; }
-  S.sips--; S.water = Math.min(100, S.water + 30); sfx.gulp(); updateVitals();
+  S.sips--; S.water = Math.min(100, S.water + 30); playHand('drink'); setTimeout(() => sfx.gulp(), 450); updateVitals();
 }
 
 // ---------- the jotter (N) and the notebook ----------
@@ -809,6 +812,7 @@ function updateSun(dt) {
   scene.fog.density = 0.0018 + smooth(10, 14, hr) * 0.0008;
   sky.position.copy(camera.position);
   post.shaftColor.setRGB(1, lerp(0.84, 0.7, low), lerp(0.62, 0.42, low));
+  updateFar(sunDir, sun.color, scene.fog.color);
 }
 
 // ---------- what's left for every frame: bleeding, the little swarms, heat, water and nerves ----------
@@ -901,7 +905,7 @@ function areaLook(cave) {
   post.vignette = cave ? 0.3 : 0.2; post.sat = 1.03; post.contrast = 1.04; post.split = cave ? 0.25 : 0.5;
   POSTU.uPostBase.value = cave ? 0.1 : 0.4;
 }
-post.shimRange.set(60, 260, 1400, 1900); post.skyZ = 1700; post.aoFade = 60;
+post.shimRange.set(60, 260, 1400, 1900); post.skyZ = 5600; post.aoFade = 60;     // only the true sky (the far plane) counts as sky for the shafts, not the ranges
 // keep the frame rate up by trading sharpness: two slow spells in a row before dropping the resolution,
 // steady frames to win it back, and longer between tries each time a step up doesn't hold (the yard's rule)
 function adaptResolution(dt) {
@@ -931,7 +935,7 @@ function loop(ts) {
   dtS = Math.abs(raw - dtS) > 0.012 ? raw : dtS + (raw - dtS) * 0.25;
   try { frame(dtS, raw); } catch (e) { if (!loop.failed) { loop.failed = true; console.error(e); } }
   const cave = inCave();
-  post.render(cave ? cave.scene : scene, camera, null, null, false, raw);
+  post.render(cave ? cave.scene : scene, camera, HANDS.scene, HANDS.camera, HANDS.active, raw);
   grabThumb();
   adaptResolution(raw);
 }
@@ -943,7 +947,7 @@ function frame(dt, raw) {
     S.time += dt * TIME_SCALE; G.time += dt;
     if (S.inTractor) driveTractor(dt); else walk(dt);
     if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); }
-    updateProps(dt);
+    updateProps(dt); updateRooms(dt);
     hazards(dt); survive(dt);
     if (!inCave() && (S.inTractor ? tractor.z : P.z) > ARRIVE_Z && !S.flags.arrived) arrive();
     if (G.redline > 0) G.redline = Math.max(0, G.redline - dt);
@@ -956,6 +960,7 @@ function frame(dt, raw) {
   if (!cave) updateSun(live ? dt : 0);
   updateAir(live ? dt : 0, { tractor, driving: S.inTractor, cave: !!cave });
   updateDetail(camera, cave);
+  updateHands(live ? dt : 0, { camera, sunDir, sunColor: sun.color, sunI: sun.intensity, hemiSky: hemi.color, hemiGround: hemi.groundColor, hemiI: hemi.intensity, cave: !!cave, bob: P.bob, speed: S.inTractor ? 0 : Math.hypot(P.vx, P.vz), firstPerson: !S.inTractor || S.view === 'seat' });
   HAZEU.uSunView.value.copy(cave ? _n.set(0, 0, 0) : _n.copy(sunDir).transformDirection(camera.matrixWorldInverse));
   // vampiris eyes: wide open in the dark, and slow to close again in the sun
   G.exposure = lerp(G.exposure, G.exposureTarget, clamp(dt * (G.exposureTarget > G.exposure ? 0.9 : 1.4), 0, 1));
@@ -964,7 +969,7 @@ function frame(dt, raw) {
   for (const r of RELICS) if (r.m.visible) r.m.rotation.y += dt * 1.5;
   // what's near enough to hear: worked out a few times a second, not every frame
   if ((amb.t -= raw) <= 0) {
-    amb.t = 0.2; const p = here();
+    amb.t = 0.2; const p = here(); cullFar();
     let w = 0; for (const s of W.spans) { const d = Math.hypot((s.a.x + s.b.x) / 2 - p.x, s.z - p.z); if (d < 60) w = Math.max(w, 1 - d / 60); }
     for (const t of TOWERS) { const d = Math.hypot(t.x - p.x, t.z - p.z); if (d < 80) w = Math.max(w, 1 - d / 80); }
     amb.wires = cave ? 0 : w;
@@ -1009,15 +1014,22 @@ function begin() {
   setTimeout(() => toast(input.mode === 'pad' ? 'RT to drive · A to climb down · Menu for the notebook' : 'W to drive · E to climb down · Tab for the notebook · N to jot an idea'), 2600);
   updateVitals(); canvas.focus();
 }
+// small animals a long way off are a few pixels each but still cost a draw apiece: each is wrapped in a group of its
+// own, so it can be dropped past a sensible distance without touching the visibility its own behaviour sets
+const CULL = [];
+function cullable(list, far) { for (const c of list || []) { if (!c.g) continue; const w = new THREE.Group(); scene.add(w); w.add(c.g); CULL.push({ c, w, far2: far * far }); } }
+function cullFar() { const p = camera.position; for (const k of CULL) k.w.visible = (k.c.x - p.x) ** 2 + (k.c.z - p.z) ** 2 < k.far2; }
 // every lit material takes the sun-tinted haze instead of flat fog, outside and in
 function hazeAll(root) { root.traverse((o) => { if (o.material) for (const m of Array.isArray(o.material) ? o.material : [o.material]) hazeify(m); }); }
 async function boot() {
   const tick = DEBUG ? (label) => console.log(`[road] ${label} ${Math.round(performance.now())} ms`) : () => {};
   reserveLife(); reserveMainRoad(); reserveProps(); RESERVED.push({ x: ADIT.x + 3, z: ADIT.z, r: 7 });
-  tick('start'); buildAir(); buildLand(); tick('land'); buildLife(); tick('life'); buildMainRoad(); tick('main road'); buildCaves(); tick('caves');
+  tick('start'); buildAir(); buildLand(); buildFar(); tick('land'); buildLife(); tick('life');
+  cullable(W.devils, 70); cullable(W.jaws, 90); cullable(W.boars, 260); buildMainRoad(); tick('main road'); buildCaves(); tick('caves');
   tractor = G.tractor = buildTractor(); addTractorThings();
   jacob = G.jacob = buildJacob(); scene.add(jacob.root);
-  buildProps(); tick('props'); buildDetail(); tick('detail');
+  buildHands();
+  buildProps(); buildRooms(); tick('props'); buildDetail(); tick('detail');
   for (const l of W.leaks) waterThing({ id: 'leak' + Math.round(l.z), name: l.name || 'Pipeline leak', x: l.x, z: l.z, r: 2.2, line: l.line || 'Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', prov: ['X', 'the old water pipeline: ' + NEW] });
   for (const w of W.water || []) waterThing({ ...w, y: w.y, r: 1.6 });
   tractor.x = 0; tractor.z = 8; P.x = tractor.x; P.z = tractor.z; view.lastX = 0; view.lastZ = 8;
@@ -1037,7 +1049,7 @@ async function boot() {
     onMode: () => { modeKey = ''; gaugeKey = ''; if (!ui.menu.hidden) renderMenu(); },
     onStart: begin, onUse: use, onDrink: drink, onSulphur: sulphur, onRadio: radio, onJot: openJot, onJotClose: closeJot, onJotSave: saveJot,
     onCompass: () => { S.compass = !S.compass; }, onView: () => { S.view = S.view === 'chase' ? 'seat' : 'chase'; view.camYaw = tractor.yaw + P.look; },
-    onPrimary: () => { if (!S.inTractor && !S.paused) primaryAction(camera); },
+    onPrimary: () => { if (S.inTractor || S.paused) return; if (canThrow()) playHand('throw', { release: () => primaryAction(camera) }); else primaryAction(camera); },
     onMenu: (tab) => openMenu(tab), onBack: () => { if (!ui.menu.hidden) closeMenu(); },
     onTab: (d) => { S.menuTab = TABS[(TABS.indexOf(S.menuTab) + d + TABS.length) % TABS.length]; renderMenu(); },
     onMenuNav: (d) => {
@@ -1063,4 +1075,4 @@ ui.btnWs.addEventListener('click', () => setWorkshop(!S.workshop));
 ui.menuClose.addEventListener('click', closeMenu);
 addEventListener('pagehide', stopVoice);
 boot();
-if (DEBUG) window.__road = { THREE, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };
+if (DEBUG) window.__road = { THREE, HANDS, playHand, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };

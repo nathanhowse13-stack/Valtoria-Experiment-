@@ -22,6 +22,9 @@ game/
   road/detail.js    the ground close up: its shader (no tiling, salt crust, cracked bitumen, wet ground) and the ring of pebbles, grass and sticks
   road/shapes.js    shapes for the scatter: fractured rocks, saltbush, dead bushes and trees, spoil heaps, the mesas
   road/props.js     things to kick, throw, open and work: stones, litter, Tally Bore's doors and pump, the wrecks, the phone
+  road/rooms.js     insides: the verandah house furnished, a hat and a shelf in the racked house, the shacks' fire rings, puddles at the leaks
+  road/hands.js     Jacob's hand, drawn over the scene: throwing, reaching, drinking
+  road/far.js       past the edge of the land: ground out to the horizon, and three ranges of hills fading into the haze
   road/sound.js     the road's synthesised sound: wind, engine, wires, tin, footsteps by surface, every knock and clang
   road/input.js     keyboard, mouse and Xbox controller
   road/jacob.js     Jacob's legs and boots, dressed for the road
@@ -83,6 +86,9 @@ The haze itself goes golden towards the sun. Shadows are soft and don't crawl as
 - **Up close**, a ring of small things follows the camera: pebbles of ironstone and desert varnish,
   stones bedded into the dirt, dry grass that leans with the wind, dead sticks, and flecks of mica,
   salt crystal and broken glass that flash when the sun catches them. Gravel gathers on the shoulders.
+- **The horizon** no longer stops where the land does: the ground runs on in long swells, and three
+  ranges of worn hills and buttes stand 1.6, 2.4 and 3.2 km out, each further into the haze than the
+  one in front, golden towards the sun. The ones facing the morning sun catch it; the rest stand dark.
 - **Further out** the land has fractured rocks in piles, saltbush in patches, dead bushes, the odd
   bleached dead tree, banded spoil heaps round the mines, and mesas on the horizon with talus slopes,
   stepped strata and a caprock lip.
@@ -90,6 +96,9 @@ The haze itself goes golden towards the sun. Shadows are soft and don't crawl as
   spinifex, carries the smoke and the spray from the burst mains, and now and then a willy-willy walks
   across the flat. The tractor throws dust and leaves tracks; Jacob leaves footprints that the wind
   fills in. Tin roofs rattle in the gusts, the windmill squeaks, washing flaps on the line.
+- **Jacob's hand** shows when it's doing something: it picks up a stone, cocks it back beside his head
+  and lets go (the stone leaves his hand at the top of the swing), reaches out to whatever he uses,
+  and brings the water bag up when he drinks. It's lit by the same sun as everything else.
 - **Moving** is eased the way the yard does it: Jacob gets going and stops without sliding, and his
   steps sound like what they land on (dirt, seal, salt, boards, scree, rock). His legs, boots and shadow
   are there when you look down. The tractor's throttle and wheel are eased, it holds a speed with the
@@ -115,6 +124,12 @@ All of these are new on the road (Experimental).
   The hand pump by the windmill gives up one cupful of bore water into your bag and a little more into
   the trough, then runs dry. There's a light switch, a dead wireless, empty fuel drums, washing on the
   line, and a row of tins on a plank for target practice.
+- **Inside the verandah house**, now its door opens: an iron bed with the mattress gone to dust, a
+  dresser whose doors still swing (there's a find on the top shelf), a table with one chair knocked
+  over, a cold stove with the kettle rusted to it, and a photograph of the house when it was whole.
+  The racked house has a hat on a nail by the door. Each roadside shack has the ring of stones where
+  its fires were. The pipeline's leaks have left puddles that hold the sky and ripple where the water
+  still drips or sprays into them.
 - **On the roads**: a ute on its roof in the ditch, a water truck stripped to its chassis, a burnt-out
   car that is still, somehow, smoking, a cow's bones, and an emergency phone with wind in the line.
 

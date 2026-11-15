@@ -193,6 +193,8 @@ function scatterLitter() {
 
 // ---------- thrown stones ----------
 const STONE = { geo: null, mat: null, flying: [], resting: [], cool: 0, thrown: 0, hits: {} };
+// whether a throw would go now (main.js plays the throw on the hand first, and lets go at the top of the swing)
+export const canThrow = () => S.started && !S.inTractor && !S.paused && !S.dead && G.area === 'out' && STONE.cool <= 0 && STONE.flying.length < 4;
 export function primaryAction(camera) {
   if (!S.started || S.inTractor || S.paused || S.dead) return;
   if (G.area !== 'out') { once('stone-cave', 'Not in here. You don’t throw things in the dark when you don’t know what’s listening.', X()); return; }
