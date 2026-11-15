@@ -13,7 +13,8 @@
 //   compass-weed (Ch1), Drop-Stalkers, Judas-Wattle, Argus-Bush (Field Guide), and from the
 //   Farm of Rust sketch: thorny-devils, jaw-jaws, the Miser-Boab and the Iron-Bark Sentinel.
 // ============================================================
-import { THREE, TAU, clamp, lerp, smooth, rng, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, SWAY, glowTexture, placeRelic, GUIDE, CH1, CH2, FARM, NEW } from './core.js';
+import { THREE, TAU, clamp, lerp, smooth, rng, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, SWAY, placeRelic, GUIDE, CH1, CH2, FARM, NEW } from './core.js';
+import { dustKick } from './air.js';
 import { h, roadDist, nearestRoad, canyonAxisX, CANYON, CAVE_MOUTHS, ridgeX, PITS, ADIT, saltAt, panX, TALLY, nearbySpinifex, addSpinifex, track, RESERVED, TOWERS, inCanyon } from './land.js';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _fwd = new THREE.Vector3();
@@ -68,6 +69,7 @@ export function buildLife() {
   for (const [x, z] of [[20, 330], [26, 338], [16, 344], [-30, 760], [-36, 768]]) boars.push(buildBoar(x, z));        // rooting along the main road
   // the finds out in the open
   placeRelic('Survey stake', new THREE.Vector3(26, h(26, 222) + 0.3, 222));
+  Object.assign(W, { devils, boars, jaws });                                                    // for thrown stones (props.js)
   const leak = W.leaks.find(l => l.z > 900) || W.leaks[0];
   if (leak) placeRelic('Pipewright token', new THREE.Vector3(leak.x + 1.6, h(leak.x + 1.6, leak.z) + 0.25, leak.z + 0.6));
 }
@@ -222,15 +224,10 @@ function buildStrider() {
   for (const s of [-1, 1]) add(g, new THREE.CylinderGeometry(0.06, 0.04, 0.6, 6), M.boneFur, s * 0.38, 1.85, 0.95, 1, 1, 1, 0.9);   // small forelimbs, clawed
   return { g, head, ears, tail, legs, state: 'off', x: 0, z: 0, yaw: 0, t: 0, blinkIn: 0, assessT: 0, speed0: 0, dv: 0, cool: 0, done: false };
 }
-// the dust a blink leaves where it was, and where it lands
-const bursts = [];
+// the dust a blink leaves where it was, and where it lands (blood-red when it lands on something)
 function dustBurst(x, z, red = false) {
-  const n = 16;
-  for (let k = 0; k < n; k++) {
-    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: red ? 0x8a1a10 : 0xb8704a, transparent: true, opacity: 0.7, depthWrite: false }));
-    m.position.set(x + (Math.random() - 0.5) * 1.2, h(x, z) + 0.4 + Math.random() * 1.5, z + (Math.random() - 0.5) * 1.2); m.scale.setScalar(1.2);
-    G.scene.add(m); bursts.push({ m, v: new THREE.Vector3((Math.random() - 0.5) * 5, 1 + Math.random() * 3, (Math.random() - 0.5) * 5), life: 1.4 });
-  }
+  dustKick(x, z, 22, { size: 0.9, spread: 5, up: 3.2, alpha: 0.42, colour: red ? [0.42, 0.08, 0.05] : null });
+  dustKick(x, z, 8, { size: 1.6, spread: 2.4, up: 1.2, alpha: 0.24, colour: red ? [0.42, 0.08, 0.05] : null });
   hooks.sfx.thump(0.35);
 }
 function poseStrider(st, dt, moving) {
@@ -399,12 +396,13 @@ export function updateLife(dt) {
   updateJaws(dt);
   updateSwarm(dt, x, z, foot);
   updateHaze(dt, x, z);
-  for (let i = bursts.length - 1; i >= 0; i--) { const b = bursts[i]; b.life -= dt; b.m.position.addScaledVector(b.v, dt); b.v.multiplyScalar(1 - dt * 2); b.m.material.opacity = Math.max(0, b.life / 1.4) * 0.7; b.m.scale.setScalar(1.2 + (1.4 - b.life) * 2); if (b.life <= 0) { G.scene.remove(b.m); b.m.material.dispose(); bursts.splice(i, 1); } }
 }
 
 function updateSpinifex(dt, x, z, foot) {
   const moving = P.speed > 0.15;
-  SWAY.uThrash.value.set(x, z, foot ? 4 : 6, moving ? clamp(P.speed / 3, 0.4, 1.2) : 0.15);
+  // a stone landing in the spinifex sets it off as surely as a foot (props.js); otherwise it's whoever's moving through it
+  if (W.thrash && W.thrash.t > 0) { W.thrash.t -= dt; SWAY.uThrash.value.set(W.thrash.x, W.thrash.z, 3.2, 1.1 * Math.min(1, W.thrash.t)); }
+  else SWAY.uThrash.value.set(x, z, foot ? 4 : 6, moving ? clamp(P.speed / 3, 0.4, 1.2) : 0.15);
   if (foot && moving) for (const c of nearbySpinifex(x, z)) {
     S.bleed = Math.min(3, S.bleed + dt * (P.speed > 1.6 ? 1.1 : 0.3));
     feed(c, dt);

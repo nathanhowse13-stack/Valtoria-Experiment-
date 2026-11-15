@@ -17,6 +17,7 @@
 // Units are metres; the road runs north along +z; east is −x.
 // ============================================================
 import { THREE, clamp, lerp, smooth, rng, noise2, G, W, blockers, shades, addThing, MX, rodMX, planarUV, merge, mesh, M, SWAY, NEW, CH2, GUIDE, hooks, S } from './core.js';
+import { rockGeometry, bushGeometry, deadBushGeometry, snagGeometry, spoilGeometry, mesaGeometry, joinColoured, swayPatch } from './shapes.js';
 
 export const LORE_KM = 20, ARRIVE_Z = 1782;
 export const HALF_W = 330;
@@ -173,7 +174,7 @@ export function buildLand() {
 const _c = new THREE.Color(), _t = new THREE.Color(), _e3 = new THREE.Vector3();
 function buildChunk(i) {
   const g = new THREE.Group(), z0 = i * 100, R = rng(9001 + (i + 5) * 7919);
-  const NX = 132, NZ = 20, pos = [], col = [], uv = [], idx = [];
+  const NX = 132, NZ = 20, pos = [], col = [], uv = [], idx = [], salty = [];
   for (let j = 0; j <= NZ; j++) for (let k = 0; k <= NX; k++) {
     const x = -HALF_W + k * (2 * HALF_W / NX), z = z0 + j * 5, y = h(x, z);
     pos.push(x, y - 0.02, z); uv.push(x / 2.5, z / 2.5);
@@ -181,6 +182,7 @@ function buildChunk(i) {
     _c.setRGB(1.0, 0.93, 0.88).multiplyScalar(0.82 + n * 0.3);
     if (y > 3) _c.lerp(strataColour(y, z, _t).multiplyScalar(1.5), smooth(3, 14, y) * 0.75);   // high ground shows its strata
     const salt = saltAt(x, z); if (salt > 0) _c.lerp(_t.setRGB(1.5, 1.46, 1.38), salt * 0.92);
+    salty.push(salt);
     for (const p of PITS) { const d = Math.hypot(x - p.x, z - p.z); if (d < p.r + 8) _c.lerp(_t.setRGB(0.72, 0.6, 0.58), smooth(p.r + 8, p.r * 0.7, d) * 0.6); }
     if (inCanyon(x, z)) _c.multiplyScalar(0.86);                                                  // the canyon floor, in its own shadow
     col.push(_c.r, _c.g, _c.b);
@@ -188,22 +190,38 @@ function buildChunk(i) {
   for (let j = 0; j < NZ; j++) for (let k = 0; k < NX; k++) { const a = j * (NX + 1) + k, b = a + 1, c = a + NX + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
   const gg = new THREE.BufferGeometry();
   gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); gg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  gg.setAttribute('aSalt', new THREE.Float32BufferAttribute(salty, 1));                        // for the ground shader's salt crust (detail.js)
   gg.setIndex(idx); gg.computeVertexNormals();
   g.add(mesh(gg, M.ground, { cast: false }));
   // the scatter: rocks, saltbush, Razor-Spinifex; none on the roads, the pans, the mesa top or the places that matter
-  const rocks = [], scrub = [], clumps = [];
-  for (let k = 0; k < 220; k++) {
+  const rocks = [], scrub = [], clumps = [], dead = [], snags = [];
+  for (let k = 0; k < 330; k++) {
     const z = z0 + R() * 100, x = (R() - 0.5) * 2 * (HALF_W - 10), roll = R();
     const rd = roadDist(x, z), salt = saltAt(x, z), cw = canyonWeight(z);
     if (rd < 9 || (cw > 0.2 && Math.abs(x - canyonAxisX(z)) > CANYON.half - 1 && Math.abs(x - canyonAxisX(z)) < mesaOuter(x > canyonAxisX(z) ? 1 : -1) + 14)) continue;
     if (nearReserved(x, z)) continue;
     if (salt > 0.5) { if (roll < 0.06) scrub.push([x, z, 0.3 + R() * 0.3, R()]); continue; }   // the pans are nearly bare
     if (inCanyon(x, z)) { if (roll < 0.3) rocks.push([x, z, 0.4 + R() * 1.4, R()]); continue; }   // the canyon floor gets its own spinifex
-    if (roll < 0.2) rocks.push([x, z, 0.3 + R() * (h(x, z) > 3 ? 2.2 : 1.2), R()]);
-    else if (roll < 0.55) scrub.push([x, z, 0.4 + R() * 0.7, R()]);
-    else if (roll < 0.8) clumps.push([x, z, 0.5 + R() * 0.8]);
+    if (roll < 0.13) {
+      const s = 0.3 + R() * (h(x, z) > 3 ? 2.2 : 1.2); rocks.push([x, z, s, R()]);
+      if (s > 0.8) for (let n = 1 + Math.floor(R() * 3); n > 0; n--) { const a = R() * 6.28, d = s * (1.1 + R() * 0.9); rocks.push([x + Math.cos(a) * d, z + Math.sin(a) * d, s * (0.15 + R() * 0.3), R()]); }   // a big rock never sits alone
+    }
+    else if (roll < 0.43) scrub.push([x, z, 0.4 + R() * 0.7, R()]);
+    else if (roll < 0.53) dead.push([x, z, 0.6 + R() * 0.8, R()]);
+    else if (roll < 0.7) clumps.push([x, z, 0.5 + R() * 0.8]);
+    else if (roll > 0.995 && h(x, z) < 3) snags.push([x, z, 0.8 + R() * 0.5, R()]);
   }
-  addRocks(g, rocks); addScrub(g, scrub); addSpinifex(g, clumps, i);
+  // saltbush grows in patches, thick where the rain runs off and pools, and hardly at all in between
+  for (let k = 0; k < 300; k++) {
+    const z = z0 + R() * 100, x = (R() - 0.5) * 2 * (HALF_W - 10), keep = R(), s = 0.3 + R() * 0.45, r = R();
+    if (keep > smooth(-0.15, 0.55, noise2(x * 0.45 + 17, z * 0.45 - 9))) continue;
+    if (roadDist(x, z) < 9 || saltAt(x, z) > 0.4 || inCanyon(x, z) || nearReserved(x, z)) continue;
+    const cw = canyonWeight(z); if (cw > 0.2 && Math.abs(x - canyonAxisX(z)) < mesaOuter(x > canyonAxisX(z) ? 1 : -1) + 14) continue;
+    if (h(x, z) > 6) continue;
+    scrub.push([x, z, s, r]);
+  }
+  const sg = new THREE.Group(); g.add(sg); g.userData.scatter = sg;                       // the scatter, drawn only so far out (main.js); the ground always
+  addRocks(sg, rocks); addScrub(sg, scrub); addSpinifex(sg, clumps, i); addDeadwood(sg, dead, snags);
   g.userData.z = z0 + 50;
   G.scene.add(g); W.chunks = W.chunks || []; W.chunks.push(g);
 }
@@ -211,17 +229,46 @@ function buildChunk(i) {
 export const RESERVED = [];
 const nearReserved = (x, z) => RESERVED.some(r => Math.hypot(x - r.x, z - r.z) < r.r);
 
-export function addRocks(g, rocks, mat = M.rock) {
+// rocks: three fractured shapes, shared round the instances, bedded into the ground rather than balanced on it
+let ROCKS = null, BUSHES = null, DEAD = null;
+export function addRocks(g, rocks, mat = M.rockV) {
   if (!rocks.length) return;
-  const im = new THREE.InstancedMesh(planarUV(new THREE.DodecahedronGeometry(1, 1), 1.6), mat, rocks.length); im.castShadow = im.receiveShadow = true;
-  rocks.forEach(([x, z, s, r], k) => { im.setMatrixAt(k, MX(x, h(x, z) + s * 0.25, z, r * 3, r * 6, 0, s * 1.5, s * 0.7, s * 1.1)); if (s > 0.9) blockers.push({ x, z, r: s * 1.1 }); });
-  g.add(im);
+  if (mat === M.rock) mat = M.rockV;
+  ROCKS = ROCKS || [[11, 2], [23, 1], [37, 1]].map(([seed, d]) => rockGeometry(seed, d));        // one shape finer than the others: the big ones get it
+  const lists = ROCKS.map(() => []); rocks.forEach((r, k) => lists[r[2] > 1.1 ? 0 : 1 + (k % 2)].push(r));
+  lists.forEach((list, v) => {
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(ROCKS[v], mat, list.length); im.castShadow = im.receiveShadow = true;
+    list.forEach(([x, z, s, r], k) => { im.setMatrixAt(k, MX(x, h(x, z) + s * 0.1, z, (r - 0.5) * 0.5, r * 6, (r - 0.5) * 0.3, s * 1.4, s * 0.85, s * 1.15)); if (s > 0.9) blockers.push({ x, z, r: s * 1.1 }); });
+    g.add(im);
+  });
 }
+// saltbush, silver-green, two shapes; the tops stir in the wind
 export function addScrub(g, scrub) {
   if (!scrub.length) return;
-  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), M.scrub, scrub.length); im.castShadow = true;
-  scrub.forEach(([x, z, s, r], k) => { im.setMatrixAt(k, MX(x, h(x, z) + s * 0.35, z, 0, r * 6, 0, s, s * 0.6, s)); im.setColorAt(k, _c.setHSL(0.17 + r * 0.08, 0.12 + r * 0.1, 0.42 + r * 0.12)); });   // saltbush, silver-green
-  g.add(im);
+  if (!BUSHES) { BUSHES = [5, 9].map(bushGeometry); swayPatch(M.bush, 'bush'); }
+  const lists = [[], []]; scrub.forEach((s, k) => lists[k % 2].push(s));
+  lists.forEach((list, v) => {
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(BUSHES[v], M.bush, list.length); im.castShadow = true; im.receiveShadow = true;
+    list.forEach(([x, z, s, r], k) => { im.setMatrixAt(k, MX(x, h(x, z) - 0.04, z, 0, r * 6, 0, s * 1.25, s * (0.9 + r * 0.4), s * 1.25)); im.setColorAt(k, _c.setHSL(0.19 + r * 0.07, 0.2 + r * 0.12, 0.13 + r * 0.07)); });   // dusty grey-green, a few more silver
+    g.add(im);
+  });
+}
+// dead bushes and the odd dead tree, bleached grey, all forks and no leaves
+export function addDeadwood(g, dead, snags = []) {
+  if (!DEAD) DEAD = { bush: [3, 8].map(deadBushGeometry), snag: [4, 12].map(snagGeometry) };
+  const put = (geos, list, cast) => {
+    const lists = geos.map(() => []); list.forEach((d, k) => lists[k % geos.length].push(d));
+    lists.forEach((l, v) => {
+      if (!l.length) return;
+      const im = new THREE.InstancedMesh(geos[v], M.deadwood, l.length); im.castShadow = cast; im.receiveShadow = true;
+      l.forEach(([x, z, s, r], k) => { im.setMatrixAt(k, MX(x, h(x, z) - 0.03, z, (r - 0.5) * 0.2, r * 6, (r - 0.5) * 0.2, s, s * (0.8 + r * 0.4), s)); im.setColorAt(k, _c.setRGB(0.85 + r * 0.25, 0.85 + r * 0.22, 0.85 + r * 0.2)); });
+      g.add(im);
+    });
+  };
+  put(DEAD.bush, dead, false); put(DEAD.snag, snags, true);
+  for (const [x, z, s] of snags) blockers.push({ x, z, r: 0.25 * s });
 }
 // Razor-Spinifex, instanced: each clump a fan of glassy blades that sway, thrash near movement and redden as they feed
 const SPIN_CELL = 5, spinGrid = new Map();
@@ -232,7 +279,7 @@ export function nearbySpinifex(x, z) {
 }
 export function addSpinifex(g, clumps, chunk, blades = 14) {
   if (!clumps.length) return;
-  const blade = new THREE.ConeGeometry(0.018, 1, 3); blade.translate(0, 0.5, 0);
+  const blade = new THREE.ConeGeometry(0.018, 1, 3, 1, true); blade.translate(0, 0.5, 0);
   const im = new THREE.InstancedMesh(blade, M.spinifex, clumps.length * blades);
   const straw = new THREE.Color(0xd8b050), cc = new THREE.Color();
   clumps.forEach(([x, z, s], k) => {
@@ -411,31 +458,7 @@ function buildEscarpment() {
 
 // ---------- the salt pans: white crust, cracked into plates ----------
 function buildSaltPans() {
-  const N = 256, c = document.createElement('canvas'); c.width = c.height = N;
-  const x = c.getContext('2d');
-  const R = rng(4242), pts = [];
-  for (let k = 0; k < 22; k++) pts.push([R() * N, R() * N]);
-  // a crack network: each pixel row scanned for where its nearest seed changes
-  const img = x.createImageData(N, N), d = img.data;
-  for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
-    let b1 = 1e9, b2 = 1e9;
-    for (const [sx, sy] of pts) for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) { const dd = (px - sx - ox) ** 2 + (py - sy - oy) ** 2; if (dd < b1) { b2 = b1; b1 = dd; } else if (dd < b2) b2 = dd; }
-    const edge = Math.sqrt(b2) - Math.sqrt(b1), o = (py * N + px) * 4;
-    const crack = edge < 1.4 ? 1 - edge / 1.4 : 0, ridge = edge < 3.5 && edge >= 1.4 ? 0.25 : 0;
-    d[o] = crack ? 90 : 255; d[o + 1] = crack ? 80 : 252; d[o + 2] = crack ? 72 : 244; d[o + 3] = Math.round(Math.max(crack * 200, ridge * 255));
-  }
-  x.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3 });
-  const pos = [], uv = [], idx = [], X0 = -190, X1 = -20, Z0 = 230, Z1 = 870, S = 4;
-  const NX = (X1 - X0) / S, NZ = (Z1 - Z0) / S, colA = [];
-  for (let j = 0; j <= NZ; j++) for (let k = 0; k <= NX; k++) { const xx = X0 + k * S, zz = Z0 + j * S; pos.push(xx, h(xx, zz) + 0.04, zz); uv.push(xx / 7, zz / 7); colA.push(1, 1, 1, saltAt(xx, zz)); }
-  for (let j = 0; j < NZ; j++) for (let k = 0; k < NX; k++) { const a = j * (NX + 1) + k, b = a + 1, cc = a + NX + 1, dd = cc + 1; idx.push(a, cc, b, b, cc, dd); }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(colA, 4));
-  g.setIndex(idx); g.computeVertexNormals();
-  mat.vertexColors = true; mat.vertexAlphas = true;
-  const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.renderOrder = 1; G.scene.add(m);
+  // the crust itself (bleached, broken into polygons with raised edges) is the ground's own shader, in detail.js
   // the liquid mirage that hangs over them in the heat
   for (const [mx, mz] of [[-96, 430], [-104, 600], [-98, 720], [-86, 340]]) {
     const mm = new THREE.Mesh(new THREE.PlaneGeometry(70, 22), M.mirage.clone()); mm.rotation.x = -Math.PI / 2; mm.position.set(mx, 0.3, mz); mm.renderOrder = 2; G.scene.add(mm);
@@ -541,9 +564,10 @@ function buildMesas() {
   const R = rng(77), parts = [];
   for (let k = 0; k < 20; k++) {
     const side = k % 2 ? 1 : -1, z = -260 + k * 130 + R() * 60, x = side * (560 + R() * 380), rad = 40 + R() * 70, ht = 18 + R() * 30;
-    parts.push([new THREE.CylinderGeometry(rad * 0.8, rad, ht, 12, 1), MX(x, ht / 2 - 4, z, 0, R() * 3, 0)]);
+    const geo = mesaGeometry(rad, ht, k * 1.7, (y, u, c) => strataColour(y * 0.7 + 4, u * 0.3, c).multiplyScalar(0.62));
+    geo.applyMatrix4(MX(x, 0, z, 0, R() * 3, 0)); parts.push(geo);
   }
-  G.scene.add(mesh(merge(parts), new THREE.MeshStandardMaterial({ color: 0x6a3424, roughness: 1, flatShading: true }), { cast: false }));
+  G.scene.add(mesh(joinColoured(parts), M.mesa, { cast: false }));
 }
 
 // ---------- the outskirts: boreholes, spoil, the adit face, boulders along the ridge ----------
@@ -560,8 +584,8 @@ function buildOutskirts() {
   G.scene.add(mesh(planarUV(merge(parts), 1), M.rust));
   // spoil heaps round the pits
   for (const p of PITS) for (let k = 0; k < 7; k++) { const a = R() * Math.PI * 2, d = p.r + 6 + R() * 10; spoil.push([p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, 1.5 + R() * 2.5, R()]); }
-  const sp = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 9), new THREE.MeshStandardMaterial({ color: 0x8a6a5e, roughness: 1, flatShading: true }), spoil.length);
-  spoil.forEach(([x, z, s, r], k) => sp.setMatrixAt(k, MX(x, h(x, z) + s * 0.4, z, 0, r * 6, 0, s * 2.2, s, s * 2)));
+  const sp = new THREE.InstancedMesh(spoilGeometry(3), M.spoil, spoil.length);
+  spoil.forEach(([x, z, s, r], k) => sp.setMatrixAt(k, MX(x, h(x, z) + s * 0.46, z, 0, r * 6, 0, s * 2.2, s, s * 2)));
   sp.castShadow = sp.receiveShadow = true; G.scene.add(sp);
   // the face of the big pit where the old adit goes in: a wall of rock with a timber-framed mouth
   {

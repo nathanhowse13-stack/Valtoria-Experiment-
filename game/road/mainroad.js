@@ -15,14 +15,16 @@
 import { THREE, TAU, clamp, lerp, smooth, rng, reduceMotion, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, glowTexture, placeRelic, GUIDE, CH1, NEW } from './core.js';
 import { h, ROUTES, TALLY, RESERVED, nearestRoad, CANYON, escarpmentPoint } from './land.js';
 import { buildStalker } from './life.js';
+import { WIND } from './air.js';
+export { WINDMILL, VER };
 
 const here = () => S.inTractor ? { x: G.tractor.x, z: G.tractor.z } : { x: P.x, z: P.z };
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ'), _one = new THREE.Vector3(1, 1, 1), _m = new THREE.Matrix4();
 const X = (why) => ['X', why ? why + ': ' + NEW : NEW];
 
 export function reserveMainRoad() { RESERVED.push({ x: TALLY.x, z: TALLY.z + 8, r: 72 }); }
-export function buildMainRoad() { buildPowerLine(); buildTallyBore(); buildScreamPeas(); buildCliffStalkers(); buildSprays(); }
-export function updateMainRoad(dt) { updateLiveWire(dt); updateScreamPeas(dt); updateCliffStalkers(dt); updateSprays(dt); updateTown(dt); }
+export function buildMainRoad() { W.tins = W.tins || []; W.mills = W.mills || []; buildPowerLine(); buildTallyBore(); buildScreamPeas(); buildCliffStalkers(); }
+export function updateMainRoad(dt) { updateLiveWire(dt); updateScreamPeas(dt); updateCliffStalkers(dt); updateTown(dt); }
 
 // ---------- the power line: a pole every thirty-eight metres on the west side of the road, from the gate to the walls ----------
 const POLE_H = 8.6;
@@ -190,7 +192,11 @@ function house({ x, z, yaw, kind }) {
   for (const [cx, cz, w, d] of solid) { const a = world(cx - w / 2, cz - d / 2), b = world(cx + w / 2, cz + d / 2); blockers.push({ x0: Math.min(a.x, b.x), z0: Math.min(a.z, b.z), x1: Math.max(a.x, b.x), z1: Math.max(a.z, b.z) }); }
   { const c = world(-Wd / 2 + 0.7, -D / 2 + 0.6); blockers.push({ x: c.x, z: c.z, r: 0.45 }); }
   if (kind === 'racked' || kind === 'verandah') shades.push({ x, z, r: 2.6, why: 'house' });
-  return { g, y, world, Wd, D, H, yaw, x, z };
+  W.tins.push({ x, z });                                                                              // loose roof iron, for the wind to rattle
+  (W.floors = W.floors || []).push({ x, z, r: Math.hypot(Wd, D) / 2 + 0.3, yaw, hw: Wd / 2, hd: D / 2, y: y + 0.1 });   // nothing small grows up through the boards
+  const rec = { g, y, world, Wd, D, H, yaw, x, z, kind };
+  (W.houses = W.houses || []).push(rec);
+  return rec;
 }
 function buildTallyBore() {
   const T = TALLY, R = rng(1717);
@@ -252,6 +258,7 @@ function buildTallyBore() {
     const lp = new THREE.Vector3(-0.8, 1.27, -0.7).applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2).add(g.position);
     placeRelic('Pump-house logbook', lp);
     shades.push({ x: p.x, z: p.z, r: 1.8, why: 'shed' });
+    W.tins.push({ x: p.x, z: p.z }); (W.floors = W.floors || []).push({ x: p.x, z: p.z, r: 2.8 });
   }
   // the windmill, half its blades gone, still turning when the wind finds it; and the water tower that fell
   {
@@ -265,7 +272,8 @@ function buildTallyBore() {
     for (let k = 0; k < 18; k++) { if ([2, 3, 7, 11, 12, 15].includes(k)) continue; const a = k / 18 * TAU; blades.push([new THREE.BoxGeometry(0.22, 1.5, 0.02), new THREE.Matrix4().compose(new THREE.Vector3(Math.sin(a) * 1.1, Math.cos(a) * 1.1, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 0, -a)), _one)]); }
     blades.push([new THREE.TorusGeometry(1.0, 0.03, 4, 24), new THREE.Matrix4()]);
     wheel.add(mesh(merge(blades), M.tin));
-    WINDMILL.wheel = wheel; WINDMILL.x = x; WINDMILL.z = z;
+    WINDMILL.wheel = wheel; WINDMILL.x = x; WINDMILL.z = z; WINDMILL.y = y;
+    WINDMILL.mill = { x, z, spin: 0.5, braked: false, rate: 0 }; W.mills.push(WINDMILL.mill);
     for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) blockers.push({ x: x + sx * 1.4, z: z + sz * 1.4, r: 0.2 });
     addThing({ id: 'tally:windmill', name: 'The windmill', verb: 'Look', x, y: y + 1.5, z, r: 3, prov: X('Tally Bore'), use: () => bark('A windmill, a third of its blades gone, still turning when the wind finds it. Pumping nothing. The bore’s down there somewhere, dry or near enough.', X('Tally Bore')) });
   }
@@ -304,7 +312,12 @@ function buildTallyBore() {
   W.flySources.push({ x: T.x, z: T.z, r: 40 });
 }
 function updateTown(dt) {
-  if (WINDMILL.wheel) WINDMILL.wheel.rotation.z += dt * (0.5 + 0.45 * Math.sin(G.time * 0.21));
+  if (WINDMILL.wheel) {
+    // it turns as hard as the wind blows, unless somebody's pulled the brake on; it takes a while to spin up and run down
+    const m = WINDMILL.mill, want = m.braked ? 0 : 0.25 + WIND.gust * 1.6;
+    m.rate += (want - m.rate) * clamp(dt * (m.braked ? 1.6 : 0.35), 0, 1); m.spin = m.rate;
+    WINDMILL.wheel.rotation.z += dt * m.rate;
+  }
   if (VER.state === 'up') {
     if (S.inTractor || G.area !== 'out') { VER.timer = 0; VER.sat = false; return; }
     const hs = VER.hs, dx = P.x - hs.x, dz = P.z - hs.z, c = Math.cos(hs.yaw), s = Math.sin(hs.yaw);
@@ -469,39 +482,5 @@ function updateCliffStalkers(dt) {
       escarpmentPoint(s.cliff.z, s.cliff.v, s.home, 0.7); s.home.y += 0.55;
       s.g.rotation.y = step > 0 ? 0 : Math.PI;
     } else s.g.rotation.y = -Math.PI / 2;                                         // waiting, facing out over the road
-  }
-}
-
-// ---------- the burst mains: a fan of spray, still under a little pressure ----------
-const SPRAYS = [];
-function buildSprays() {
-  for (const s of W.sprays) {
-    const N = 90, pos = new Float32Array(N * 3).fill(-999), vel = new Float32Array(N * 3), life = new Float32Array(N), geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: glowTexture(), color: 0xcfe2ea, size: 0.13, transparent: true, opacity: 0.7, depthWrite: false }));
-    pts.frustumCulled = false; G.scene.add(pts);
-    SPRAYS.push({ s, pts, geo, pos, vel, life, i: 0, acc: 0, ground: h(s.x, s.z) + 0.05 });
-  }
-}
-function updateSprays(dt) {
-  const p = here();
-  for (const sp of SPRAYS) {
-    const near = G.area === 'out' && Math.hypot(sp.s.x - p.x, sp.s.z - p.z) < 160; sp.pts.visible = near;
-    if (!near) continue;
-    const boost = S.flags.valve ? 1.5 : 1, N = sp.life.length;
-    sp.acc += dt * 70 * boost;
-    while (sp.acc >= 1) {
-      sp.acc -= 1; const k = sp.i = (sp.i + 1) % N;
-      sp.pos.set([sp.s.x, sp.s.y, sp.s.z], k * 3);
-      sp.vel.set([sp.s.dx * (1.8 + Math.random() * 1.6) * boost + (Math.random() - 0.5) * 0.8, (2.4 + Math.random() * 1.6) * boost, sp.s.dz + (Math.random() - 0.5) * 1.4], k * 3);
-      sp.life[k] = 2;
-    }
-    for (let k = 0; k < N; k++) {
-      if (sp.life[k] <= 0) continue;
-      sp.life[k] -= dt; sp.vel[k * 3 + 1] -= 9.8 * dt;
-      for (let a = 0; a < 3; a++) sp.pos[k * 3 + a] += sp.vel[k * 3 + a] * dt;
-      if (sp.pos[k * 3 + 1] < sp.ground) { sp.life[k] = 0; sp.pos[k * 3 + 1] = -999; }
-    }
-    sp.geo.attributes.position.needsUpdate = true;
   }
 }

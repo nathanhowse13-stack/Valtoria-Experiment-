@@ -34,7 +34,7 @@ export const S = {
   time: 6 * 3600 + 25 * 60, health: 100, water: 82, stress: 8, bleed: 0, sips: 3, can: 4, sulphur: 1, disoriented: 0, haze: 0, earcage: false,
   finds: {}, flags: {}, met: {}, footKm: 0, handoff: null, menuTab: 'finds', hull: 0, route: '',
 };
-export const P = { x: 0, z: 0, y: 0, yaw: 0, pitch: -0.05, look: 0, speed: 0, bob: 0, stun: 0, shake: 0, crouch: 0 };
+export const P = { x: 0, z: 0, y: 0, yaw: 0, pitch: -0.05, look: 0, speed: 0, vx: 0, vz: 0, run: 0, bob: 0, stun: 0, shake: 0, crouch: 0 };
 export const things = [];      // anything that can be used: { id, name, verb, x, y, z, r, prov, use, enabled, area }
 export const blockers = [];    // circles { x, z, r } and boxes { x0, z0, x1, z1 } outside
 export const shades = [];      // where the sun can't reach: { x, z, r, why }
@@ -125,7 +125,7 @@ function softEdge() { const c = document.createElement('canvas'); c.width = c.he
 export const assetURL = (path) => (window.__ASSETS && window.__ASSETS[path]) || 'assets/' + path;
 export const T = {};
 export const M = {};
-export const SWAY = { uTime: { value: 0 }, uThrash: { value: new THREE.Vector4(0, 0, 0, 0) } };   // the spinifex's wind, and where it's thrashing
+export const SWAY = { uTime: { value: 0 }, uThrash: { value: new THREE.Vector4(0, 0, 0, 0) }, uWind: { value: new THREE.Vector3(-1, 0, 0.3) } };   // the wind (which way, and how hard it's gusting), and where the spinifex is thrashing
 export function initMaterials(maxAniso) {
   const loader = new THREE.TextureLoader();
   const tex = (name, srgb = true) => { const t = loader.load(assetURL('tex/' + name + '.jpg')); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, maxAniso); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; return t; };
@@ -194,21 +194,27 @@ export function initMaterials(maxAniso) {
     peaPod: new THREE.MeshStandardMaterial({ color: 0x5c2a1c, roughness: 0.85 }),
     brick: new THREE.MeshStandardMaterial({ color: 0x9a5a44, roughness: 0.95, flatShading: true }),
     tank: std('tin', { color: 0xa89a88, roughness: 0.5, metalness: 0.6, side: THREE.DoubleSide }),
+    rockV: std('iron', { color: 0xc8826a, roughness: 0.95, vertexColors: true }),                    // scatter rocks: their own dark foot in the vertex colours (shapes.js)
+    bush: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, vertexColors: true }),    // saltbush, darker inside
+    deadwood: std('frame', { color: 0x9e958a, roughness: 0.95 }),                                     // dead bushes and trees, bleached grey
+    spoil: new THREE.MeshStandardMaterial({ map: T.dirt.c, normalMap: T.dirt.n, normalScale: new THREE.Vector2(1.1, 1.1), vertexColors: true, roughness: 1 }),   // tipped dirt, banded (shapes.js)
+    mesa: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }),
   });
   // the spinifex never quite holds still, and thrashes where something moves through it
   M.spinifex.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, SWAY);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec4 uThrash;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform vec4 uThrash; uniform vec3 uWind;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         #ifdef USE_INSTANCING
         vec2 ip = instanceMatrix[3].xz;
         float near = 1.0 - smoothstep(uThrash.z * 0.4, uThrash.z, distance(ip, uThrash.xy));
-        float k = position.y * position.y;
-        transformed.x += (sin(uTime * 1.3 + ip.x * 0.7) * 0.05 + near * uThrash.w * sin(uTime * 17.0 + ip.y * 3.1) * 0.35) * k;
-        transformed.z += (cos(uTime * 1.1 + ip.y * 0.6) * 0.05 + near * uThrash.w * cos(uTime * 13.0 + ip.x * 2.3) * 0.35) * k;
+        float k = position.y * position.y, gust = 0.03 + 0.09 * uWind.z, wave = sin(uTime * (1.2 + uWind.z) + ip.x * 0.7 + ip.y * 0.45);
+        transformed.x += ((wave * 0.6 + 0.5) * gust * 1.6 * uWind.x + sin(uTime * 1.3 + ip.x * 0.7) * 0.03 + near * uThrash.w * sin(uTime * 17.0 + ip.y * 3.1) * 0.35) * k;
+        transformed.z += ((wave * 0.6 + 0.5) * gust * 1.6 * uWind.y + cos(uTime * 1.1 + ip.y * 0.6) * 0.03 + near * uThrash.w * cos(uTime * 13.0 + ip.x * 2.3) * 0.35) * k;
         #endif`);
   };
+  M.spinifex.customProgramCacheKey = () => 'spinifex';
 }
 
 // ---------- relics: a glint where something was left, and the hand that picks it up ----------

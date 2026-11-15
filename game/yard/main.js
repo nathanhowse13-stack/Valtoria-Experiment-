@@ -1,5 +1,9 @@
 import * as THREE from "./vendor/three.module.js";
 import { buildTractor } from "../shared/tractor.js";
+import { POSTU, POST_GLSL, QUALITY, QUALITY_ORDER, makePost, HAZEU, hazeify } from "../shared/post.js";
+import { Particles, makeGlints, prng } from "../shared/particles.js";
+import { voice, saveVoice, voiceChoices, voiceLabel, speak, stopVoice } from "../shared/voice.js";
+import { LEG, buildBody } from "../shared/body.js";
 import { ideas, IDEA_KINDS, connectIdeas, addIdea, deleteIdea, exportIdeas, ideaWhere } from "../shared/notebook.js";
 // ============================================================
 // Procedural textures – everything is painted onto canvases at
@@ -8,6 +12,7 @@ import { ideas, IDEA_KINDS, connectIdeas, addIdea, deleteIdea, exportIdeas, idea
 const TAU = Math.PI * 2;
 let _seed = 0x2f6b9d11;
 function R() { _seed ^= _seed << 13; _seed ^= _seed >>> 17; _seed ^= _seed << 5; return (_seed >>> 0) / 4294967296; }
+prng.next = R;      // the shared particle pools and glints draw from the same seeded generator, so the yard builds the same every time
 function rand(a = 0, b = 1) { return a + (b - a) * R(); }
 function pick(list) { return list[Math.floor(R() * list.length)]; }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -1143,105 +1148,6 @@ function lumpify(geo, amount, freq = 3, seed = 0) {
   return geo;
 }
 
-// ---------- glints: one Points draw call for every "you haven't looked at this yet" twinkle ----------
-function makeGlints(positions, tex, { size = 0.07, color = 0xffe2b0, near = 0.4, far = 1.0, strength = 1 } = {}) {
-  const n = positions.length, pos = new Float32Array(n * 3), phase = new Float32Array(n), on = new Float32Array(n);
-  positions.forEach((p, i) => { pos.set([p.x, p.y, p.z], i * 3); phase[i] = rand(0, TAU); on[i] = 1; });
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
-  g.setAttribute('aOn', new THREE.BufferAttribute(on, 1));
-  const u = { uTex: { value: tex }, uTime: { value: 0 }, uScale: { value: 400 }, uSize: { value: size }, uColor: { value: new THREE.Color(color) }, uNear: { value: near }, uFar: { value: far }, uStrength: { value: strength }, ...POSTU };
-  const m = new THREE.ShaderMaterial({
-    uniforms: u, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
-    vertexShader: `attribute float aPhase; attribute float aOn; uniform float uTime; uniform float uScale; uniform float uSize; uniform float uNear; uniform float uFar; varying float vA;
-      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); float d = -mv.z;
-        vA = aOn * (0.22 + 0.28 * (0.5 + 0.5 * sin(uTime * 2.2 + aPhase))) * smoothstep(uNear, uFar, d);
-        gl_PointSize = aOn > 0.5 ? max(2.0, uSize * uScale / d) : 0.0; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: POST_GLSL + `uniform sampler2D uTex; uniform vec3 uColor; uniform float uStrength; varying float vA;
-      void main(){ vec4 t = texture2D(uTex, gl_PointCoord); gl_FragColor = vec4(postAdd(uColor * t.rgb * (t.a * vA * uStrength * 2.0)), 1.0); }`,
-  });
-  const points = new THREE.Points(g, m);
-  points.frustumCulled = false; points.renderOrder = 5;
-  return {
-    points, uniforms: u,
-    set(i, visible) { on[i] = visible ? 1 : 0; g.attributes.aOn.needsUpdate = true; },
-    move(i, p) { pos.set([p.x, p.y, p.z], i * 3); g.attributes.position.needsUpdate = true; },
-  };
-}
-
-// ---------- a pool of soft particles (steam, smoke, sparks, feathers, splashes) ----------
-class Particles {
-  constructor(max, tex, { additive = false, fog = true, color = 0xffffff, renderOrder = 6 } = {}) {
-    this.max = max; this.n = 0;
-    this.pos = new Float32Array(max * 3); this.vel = new Float32Array(max * 3);
-    this.life = new Float32Array(max); this.age = new Float32Array(max);
-    this.size0 = new Float32Array(max); this.size1 = new Float32Array(max);
-    this.alpha = new Float32Array(max); this.a0 = new Float32Array(max);
-    this.col = new Float32Array(max * 3); this.drag = new Float32Array(max); this.grav = new Float32Array(max);
-    this.sizeNow = new Float32Array(max);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('aSize', new THREE.BufferAttribute(this.sizeNow, 1).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
-    g.setAttribute('aColor', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
-    g.setDrawRange(0, 0);
-    this.u = { uTex: { value: tex }, uScale: { value: 400 }, fogColor: { value: new THREE.Color() }, fogDensity: { value: 0 }, uTint: { value: new THREE.Color(color) }, ...POSTU };
-    this.useFog = fog;
-    this.mat = new THREE.ShaderMaterial({
-      uniforms: this.u, transparent: true, depthWrite: false, fog: false,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      vertexShader: `attribute float aSize; attribute float aAlpha; attribute vec3 aColor; uniform float uScale; varying float vA; varying vec3 vC; varying float vFogDepth;
-        void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vFogDepth = -mv.z; vA = aAlpha; vC = aColor;
-          gl_PointSize = aSize * uScale / max(0.05, -mv.z); gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: POST_GLSL + `uniform sampler2D uTex; uniform vec3 uTint; uniform vec3 fogColor; uniform float fogDensity; varying float vA; varying vec3 vC; varying float vFogDepth;
-        void main(){ vec4 t = texture2D(uTex, gl_PointCoord); vec3 c = t.rgb * vC * uTint;
-          float f = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
-          ${additive ? 'gl_FragColor = vec4(postAdd(c * (t.a * vA * (1.0 - f))), 1.0);' : `vec3 cf = mix(c, fogColor, f); float a = t.a * vA;
-          // through the post chain this blends in linear light, where a pale puff over dark ground reads far stronger than it
-          // did on screen: thin the pale ones out, keep dark smoke dense
-          if (uPostLin > 0.5) a = pow(a, mix(0.85, 2.0, smoothstep(0.25, 0.75, dot(cf, vec3(0.299, 0.587, 0.114)))));
-          gl_FragColor = vec4(postOut(cf), a);`} }`,
-    });
-    this.points = new THREE.Points(g, this.mat);
-    this.points.frustumCulled = false; this.points.renderOrder = renderOrder;
-    this.geo = g;
-  }
-  emit(x, y, z, { vx = 0, vy = 0, vz = 0, life = 1, size = 0.1, size1 = null, alpha = 1, color = [1, 1, 1], drag = 1, grav = 0, spread = 0 } = {}) {
-    let i = this.n < this.max ? this.n++ : (this._r = ((this._r || 0) + 1) % this.max);
-    this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
-    this.vel[i * 3] = vx + (R() - 0.5) * spread; this.vel[i * 3 + 1] = vy + (R() - 0.5) * spread; this.vel[i * 3 + 2] = vz + (R() - 0.5) * spread;
-    this.life[i] = life; this.age[i] = 0; this.size0[i] = size; this.size1[i] = size1 ?? size; this.a0[i] = alpha; this.alpha[i] = alpha;
-    this.col[i * 3] = color[0]; this.col[i * 3 + 1] = color[1]; this.col[i * 3 + 2] = color[2];
-    this.drag[i] = drag; this.grav[i] = grav; this.sizeNow[i] = size;
-  }
-  update(dt, scene) {
-    let n = this.n;
-    for (let i = 0; i < n; i++) {
-      this.age[i] += dt;
-      if (this.age[i] >= this.life[i]) { this.copy(--n, i); i--; continue; }
-      const k = Math.exp(-this.drag[i] * dt);
-      this.vel[i * 3] *= k; this.vel[i * 3 + 1] = this.vel[i * 3 + 1] * k - this.grav[i] * dt; this.vel[i * 3 + 2] *= k;
-      this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
-      const t = this.age[i] / this.life[i];
-      this.sizeNow[i] = this.size0[i] + (this.size1[i] - this.size0[i]) * t;
-      this.alpha[i] = this.a0[i] * Math.min(1, t * 6) * (1 - t) * (1 - t);
-    }
-    this.n = n;
-    const g = this.geo;
-    g.setDrawRange(0, n);
-    g.attributes.position.needsUpdate = g.attributes.aSize.needsUpdate = g.attributes.aAlpha.needsUpdate = g.attributes.aColor.needsUpdate = true;
-    if (this.useFog && scene && scene.fog) { this.u.fogColor.value.copy(scene.fog.color); this.u.fogDensity.value = scene.fog.density || 0; }
-    else this.u.fogDensity.value = 0;
-  }
-  copy(from, to) {
-    if (from === to) return;
-    for (const [arr, w] of [[this.pos, 3], [this.vel, 3], [this.col, 3]]) for (let k = 0; k < w; k++) arr[to * w + k] = arr[from * w + k];
-    for (const arr of [this.life, this.age, this.size0, this.size1, this.alpha, this.a0, this.drag, this.grav, this.sizeNow]) arr[to] = arr[from];
-  }
-  clear() { this.n = 0; this.geo.setDrawRange(0, 0); }
-}
-
 // Collision shapes for walking: circles, axis-aligned rectangles and thick segments.
 function pushOut(p, r, c) {
   if (c.off) return;
@@ -1291,419 +1197,6 @@ function IT(id, name, verb, cx, cy, cz, sx, sy, sz, glint, extra = {}) {
 }
 function moveItem(it, cx, cy, cz) { it.center.set(cx, cy, cz); it.box.setFromCenterAndSize(it.center, it.size); }
 const valueOf = (v) => typeof v === 'function' ? v() : v;
-// ============================================================
-// Post-processing and graphics quality. On anything but "low" the
-// world is drawn into a linear HDR target (multisampled), ambient
-// occlusion is worked out from its depth, Jacob's hand is drawn on
-// top, then bloom and sun shafts are added and the lot is tone-mapped,
-// graded, vignetted and dithered onto the screen. "Low" draws straight
-// to the screen the old way, for slow phones.
-// ============================================================
-const POSTU = { uPostLin: { value: 0 }, uPostExpo: { value: 1 }, uPostBase: { value: 0.2 } };
-// three's ACES matrices (GLSL column order) and their inverses, so custom shaders can hand the post chain
-// a linear colour that comes back out of the tone curve exactly as they meant it
-const ACES_IN = [0.59719, 0.07600, 0.02840, 0.35458, 0.90834, 0.13383, 0.04823, 0.01566, 0.83777];
-const ACES_OUT = [1.60475, -0.10208, -0.00327, -0.53108, 1.10813, -0.07276, -0.07367, -0.00605, 1.07602];
-const glslMat3 = (a) => `mat3(${a.map(v => v.toFixed(7)).join(', ')})`;
-const invMat3 = (a) => new THREE.Matrix3().fromArray(a).invert().elements.slice();
-// Every custom shader that writes a display-ready colour ends with postOut(c).
-const POST_GLSL = `
-uniform float uPostLin; uniform float uPostExpo; uniform float uPostBase;
-vec3 postOut(vec3 c) {
-  if (uPostLin < 0.5) return c;
-  c = clamp(c, 0.0, 0.99);
-  c = mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
-  vec3 u = clamp(${glslMat3(invMat3(ACES_OUT))} * c, 0.0, 0.99);
-  vec3 A = 1.0 - 0.983729 * u, B = 0.0245786 - 0.4329510 * u, C = -(0.000090537 + 0.238081 * u);
-  vec3 v = (-B + sqrt(max(B * B - 4.0 * A * C, 0.0))) / (2.0 * A);
-  return max(${glslMat3(invMat3(ACES_IN))} * v, 0.0) * 0.6 / uPostExpo;
-}
-// An additive glow, given as what it adds on screen over a typical background for the place (uPostBase),
-// turned into the light the post chain has to add to land there. Draw with alpha 1: vec4(postAdd(colour * a), 1.0).
-vec3 postAdd(vec3 c) {
-  if (uPostLin < 0.5) return c;
-  vec3 b = vec3(uPostBase);
-  return max(postOut(min(b + c, vec3(0.99))) - postOut(b), 0.0);
-}`;
-const ACES_GLSL = `
-vec3 postRRT(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
-vec3 acesFilmic(vec3 color, float exposure) {
-  color *= exposure / 0.6;
-  color = ${glslMat3(ACES_IN)} * color;
-  color = postRRT(color);
-  color = ${glslMat3(ACES_OUT)} * color;
-  return clamp(color, 0.0, 1.0);
-}`;
-
-// ---------- quality presets ----------
-const QUALITY = {
-  low: { label: 'Low', post: false, ao: 0, msaa: 0, ratio: 1.0, shadow: 2048, shadowRadius: 1.5, shafts: false, bloom: false, aniso: 4 },
-  medium: { label: 'Medium', post: true, ao: 0, msaa: 4, ratio: 1.25, shadow: 2048, shadowRadius: 2, shafts: true, bloom: true, aniso: 8 },
-  high: { label: 'High', post: true, ao: 12, msaa: 4, ratio: 1.5, shadow: 4096, shadowRadius: 2.5, shafts: true, bloom: true, aniso: 16 },
-  ultra: { label: 'Ultra', post: true, ao: 16, msaa: 4, ratio: 2.0, shadow: 4096, shadowRadius: 3, shafts: true, bloom: true, aniso: 16, aoFull: true },
-};
-const QUALITY_ORDER = ['low', 'medium', 'high', 'ultra'];
-
-function makePost(renderer) {
-  const caps = renderer.capabilities, ext = renderer.extensions;
-  const supported = caps.isWebGL2 && (ext.has('EXT_color_buffer_float') || ext.has('EXT_color_buffer_half_float'));
-  const maxSamples = caps.maxSamples || 0;
-  const P = {
-    supported, on: false, q: QUALITY.low, w: 2, h: 2,
-    exposure: 1, ao: 0.75, aoRadius: 0.5, aoIntensity: 1.0, bloom: 0.065, shafts: 0, shaftColor: new THREE.Color(1.0, 0.78, 0.5), shimmer: 0, grain: 0.032, vignette: 0.26, sat: 1.04, contrast: 1.035, split: 0.5,
-    sunDir: null, time: 0,
-  };
-  const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
-  const quadGeo = new THREE.BufferGeometry();
-  quadGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
-  quadGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2));
-  const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), quad = new THREE.Mesh(quadGeo), quadScene = new THREE.Scene();
-  quad.frustumCulled = false; quadScene.add(quad);
-  const mk = (fs, uniforms, defines = {}) => new THREE.ShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, defines, depthTest: false, depthWrite: false, toneMapped: false });
-  function pass(mat, target) { quad.material = mat; renderer.setRenderTarget(target); renderer.render(quadScene, quadCam); }
-
-  // ---------- targets ----------
-  const RT = {};
-  const target = (w, h, { samples = 0, depth = false, depthTex = false, half = true } = {}) => {
-    const t = new THREE.WebGLRenderTarget(w, h, { type: half ? THREE.HalfFloatType : THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: depth, stencilBuffer: false, samples });
-    if (depthTex) t.depthTexture = new THREE.DepthTexture(w, h);
-    t.texture.generateMipmaps = false;
-    return t;
-  };
-  const LEVELS = 5;
-  function build() {
-    for (const k in RT) { if (Array.isArray(RT[k])) RT[k].forEach(t => t.dispose()); else RT[k].dispose(); delete RT[k]; }
-    if (!P.on) return;
-    const q = P.q, s = Math.min(q.msaa, maxSamples), w = P.w, h = P.h;
-    RT.scene = target(w, h, { samples: s, depth: true, depthTex: true });
-    RT.comp = target(w, h, { samples: s, depth: true });
-    const aw = q.aoFull ? w : Math.ceil(w / 2), ah = q.aoFull ? h : Math.ceil(h / 2);
-    RT.ao = target(aw, ah, { half: false }); RT.ao2 = target(aw, ah, { half: false });
-    RT.down = []; RT.up = [];
-    let bw = Math.ceil(w / 2), bh = Math.ceil(h / 2);
-    for (let i = 0; i < LEVELS; i++) { RT.down.push(target(bw, bh)); RT.up.push(target(bw, bh)); bw = Math.max(1, Math.ceil(bw / 2)); bh = Math.max(1, Math.ceil(bh / 2)); }
-    RT.shaft = target(Math.ceil(w / 4), Math.ceil(h / 4), { half: false }); RT.shaft2 = target(Math.ceil(w / 4), Math.ceil(h / 4), { half: false });
-    // blank stand-ins when a stage is switched off
-    RT.white = target(1, 1, { half: false }); RT.black = target(1, 1, { half: false });
-    const cl = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
-    renderer.setRenderTarget(RT.white); renderer.setClearColor(0xffffff, 1); renderer.clear();
-    renderer.setRenderTarget(RT.black); renderer.setClearColor(0x000000, 1); renderer.clear();
-    renderer.setRenderTarget(null); renderer.setClearColor(cl, ca);
-  }
-
-  // ---------- passes ----------
-  const DEPTH_GLSL = `uniform float uNear; uniform float uFar;
-    float viewDist(float d) { return (uNear * uFar) / (uFar - (uFar - uNear) * d); }`;
-  // scalable ambient obscurance from the depth buffer alone
-  const aoMat = mk(`varying vec2 vUv; uniform sampler2D tDepth; uniform vec2 uRes; uniform mat4 uProjInv; uniform float uProjY;
-    uniform float uRadius; uniform float uIntensity; uniform float uBias; uniform float uFade; uniform float uSeed;
-    vec3 vpos(vec2 uv) { float d = texture2D(tDepth, uv).x; vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return p.xyz / p.w; }
-    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-    void main() {
-      float d = texture2D(tDepth, vUv).x;
-      if (d > 0.99999) { gl_FragColor = vec4(1.0); return; }
-      vec3 P = vpos(vUv);
-      if (-P.z > uFade) { gl_FragColor = vec4(1.0); return; }
-      vec2 px = 1.0 / uRes;
-      vec3 Pr = vpos(vUv + vec2(px.x, 0.0)), Pl = vpos(vUv - vec2(px.x, 0.0)), Pu = vpos(vUv + vec2(0.0, px.y)), Pd = vpos(vUv - vec2(0.0, px.y));
-      vec3 dx = abs(Pr.z - P.z) < abs(P.z - Pl.z) ? Pr - P : P - Pl;
-      vec3 dy = abs(Pu.z - P.z) < abs(P.z - Pd.z) ? Pu - P : P - Pd;
-      vec3 N = normalize(cross(dx, dy));
-      float rPx = min(uRadius * uProjY * 0.5 * uRes.y / -P.z, 90.0);
-      if (rPx < 1.5) { gl_FragColor = vec4(1.0); return; }
-      float spin = hash(gl_FragCoord.xy + uSeed) * 6.2831853, sum = 0.0, r2 = uRadius * uRadius;
-      for (int i = 0; i < NS; i++) {
-        float a = (float(i) + 0.5) / float(NS), ang = a * 6.2831853 * 7.0 + spin;
-        vec3 S = vpos(vUv + vec2(cos(ang), sin(ang)) * a * rPx * px);
-        vec3 v = S - P; float vv = dot(v, v), vn = dot(v, N);
-        float f = max(r2 - vv, 0.0);
-        sum += f * f * f * max((vn - uBias) / (vv + 0.01), 0.0);
-      }
-      float ao = max(0.0, 1.0 - sum * uIntensity / (r2 * r2 * r2) * (5.0 / float(NS)));
-      ao = mix(ao, 1.0, smoothstep(uFade * 0.6, uFade, -P.z));
-      gl_FragColor = vec4(ao, ao, ao, 1.0);
-    }`, { tDepth: { value: null }, uRes: { value: new THREE.Vector2() }, uProjInv: { value: new THREE.Matrix4() }, uProjY: { value: 1 }, uRadius: { value: 0.55 }, uIntensity: { value: 1.0 }, uBias: { value: 0.012 }, uFade: { value: 42 }, uSeed: { value: 0 } }, { NS: 12 });
-  // depth-aware blur, run across and then down
-  const blurMat = mk(`varying vec2 vUv; uniform sampler2D tAO; uniform sampler2D tDepth; uniform vec2 uDir; ${DEPTH_GLSL}
-    void main() {
-      float z0 = viewDist(texture2D(tDepth, vUv).x), sum = texture2D(tAO, vUv).r, ws = 1.0;
-      for (int i = -4; i <= 4; i++) {
-        if (i == 0) continue;
-        vec2 uv = vUv + uDir * float(i);
-        float z = viewDist(texture2D(tDepth, uv).x);
-        float w = exp(-float(i * i) / 9.0) * max(0.0, 1.0 - abs(z - z0) / (0.04 * z0 + 0.03));
-        sum += texture2D(tAO, uv).r * w; ws += w;
-      }
-      float a = sum / ws; gl_FragColor = vec4(a, a, a, 1.0);
-    }`, { tAO: { value: null }, tDepth: { value: null }, uDir: { value: new THREE.Vector2() }, uNear: { value: 0.03 }, uFar: { value: 600 } });
-  // the world times its occlusion, with a heat shimmer over the far ground outside
-  const compMat = mk(`varying vec2 vUv; uniform sampler2D tColor; uniform sampler2D tAO; uniform sampler2D tDepth; uniform float uAO; uniform float uShimmer; uniform float uTime; ${DEPTH_GLSL}
-    void main() {
-      vec2 uv = vUv;
-      if (uShimmer > 0.0) {
-        float z = viewDist(texture2D(tDepth, vUv).x), k = smoothstep(28.0, 140.0, z) * (1.0 - smoothstep(330.0, 400.0, z)) * uShimmer;
-        uv += vec2(sin(vUv.y * 190.0 + uTime * 5.3) + 0.6 * sin(vUv.y * 83.0 - uTime * 3.7), 0.5 * cos(vUv.x * 140.0 + uTime * 4.1)) * 0.00055 * k;
-      }
-      vec4 c = texture2D(tColor, uv);
-      c.rgb *= mix(1.0, texture2D(tAO, vUv).r, uAO);
-      gl_FragColor = vec4(c.rgb, 1.0);
-    }`, { tColor: { value: null }, tAO: { value: null }, tDepth: { value: null }, uAO: { value: 0.8 }, uShimmer: { value: 0 }, uTime: { value: 0 }, uNear: { value: 0.03 }, uFar: { value: 600 } });
-  // bloom: a soft threshold, then a dual-filter chain down and back up
-  const brightMat = mk(`varying vec2 vUv; uniform sampler2D tColor; uniform vec2 uTexel; uniform float uExpo; uniform float uThresh;
-    void main() {
-      vec3 c = (texture2D(tColor, vUv + uTexel * vec2(-0.5, -0.5)).rgb + texture2D(tColor, vUv + uTexel * vec2(0.5, -0.5)).rgb + texture2D(tColor, vUv + uTexel * vec2(-0.5, 0.5)).rgb + texture2D(tColor, vUv + uTexel * vec2(0.5, 0.5)).rgb) * 0.25 * uExpo;
-      float br = max(c.r, max(c.g, c.b)), knee = uThresh * 0.5;
-      float soft = clamp(br - uThresh + knee, 0.0, 2.0 * knee); soft = soft * soft / (4.0 * knee + 1e-4);
-      c *= max(soft, br - uThresh) / max(br, 1e-4);
-      gl_FragColor = vec4(min(c, vec3(40.0)), 1.0);
-    }`, { tColor: { value: null }, uTexel: { value: new THREE.Vector2() }, uExpo: { value: 1 }, uThresh: { value: 1.0 } });
-  const downMat = mk(`varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 uTexel;
-    void main() { vec3 s = texture2D(tSrc, vUv).rgb * 4.0;
-      s += texture2D(tSrc, vUv + uTexel * vec2(-1.0, -1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, -1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(-1.0, 1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, 1.0)).rgb;
-      gl_FragColor = vec4(s / 8.0, 1.0); }`, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } });
-  const upMat = mk(`varying vec2 vUv; uniform sampler2D tSrc; uniform sampler2D tAdd; uniform vec2 uTexel;
-    void main() { vec3 s = vec3(0.0);
-      s += texture2D(tSrc, vUv + uTexel * vec2(-2.0, 0.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(2.0, 0.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(0.0, -2.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(0.0, 2.0)).rgb;
-      s += (texture2D(tSrc, vUv + uTexel * vec2(-1.0, -1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, -1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(-1.0, 1.0)).rgb + texture2D(tSrc, vUv + uTexel * vec2(1.0, 1.0)).rgb) * 2.0;
-      gl_FragColor = vec4(s / 12.0 + texture2D(tAdd, vUv).rgb, 1.0); }`, { tSrc: { value: null }, tAdd: { value: null }, uTexel: { value: new THREE.Vector2() } });
-  // sun shafts: the sky that shows round things, smeared out from the sun's spot on screen
-  const shaftMaskMat = mk(`varying vec2 vUv; uniform sampler2D tDepth; uniform vec2 uSun; uniform float uAspect; ${DEPTH_GLSL}
-    void main() {
-      float z = viewDist(texture2D(tDepth, vUv).x);
-      float sky = step(360.0, z);
-      vec2 d = (vUv - uSun) * vec2(uAspect, 1.0);
-      gl_FragColor = vec4(vec3(sky * pow(max(0.0, 1.0 - length(d) / 0.75), 2.2)), 1.0);
-    }`, { tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uNear: { value: 0.03 }, uFar: { value: 600 } });
-  const shaftBlurMat = mk(`varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 uSun; uniform float uSpan;
-    void main() {
-      vec2 step = (uSun - vUv) * uSpan / 30.0; vec2 uv = vUv; float sum = 0.0, w = 1.0;
-      for (int i = 0; i < 30; i++) { sum += texture2D(tSrc, uv).r * w; w *= 0.955; uv += step; }
-      gl_FragColor = vec4(vec3(sum / 12.0), 1.0);
-    }`, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uSpan: { value: 1 } });
-  // the last word: tone curve, grade, vignette, grain
-  const finalMat = mk(`varying vec2 vUv; uniform sampler2D tColor; uniform sampler2D tBloom; uniform sampler2D tShaft;
-    uniform float uExpo; uniform float uBloom; uniform float uShaft; uniform vec3 uShaftCol; uniform float uSat; uniform float uContrast; uniform float uSplit; uniform float uVignette; uniform float uGrain; uniform float uTime; uniform vec2 uRes;
-    ${ACES_GLSL}
-    void main() {
-      vec3 c = texture2D(tColor, vUv).rgb + texture2D(tBloom, vUv).rgb * uBloom + texture2D(tShaft, vUv).r * uShaftCol * uShaft;
-      c = acesFilmic(c, uExpo);
-      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = max(mix(vec3(l), c, uSat), 0.0);
-      // a light split tone: shade leans cool, sunlit things lean warm, so the red world has some depth to it
-      vec3 tint = mix(vec3(0.93, 0.97, 1.1), vec3(1.05, 1.0, 0.93), smoothstep(0.02, 0.5, l));
-      c *= mix(vec3(1.0), tint, uSplit);
-      c = mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, step(c, vec3(0.0031308)));
-      c = (c - 0.5) * uContrast + 0.5;
-      vec2 q = (vUv - 0.5) * vec2(uRes.x / uRes.y, 1.0);
-      c *= 1.0 - uVignette * smoothstep(0.25, 1.1, length(q) * 1.25);
-      float n = fract(sin(dot(vUv * uRes + fract(uTime) * 91.7, vec2(12.9898, 78.233))) * 43758.5453);
-      c += (n - 0.5) * uGrain;
-      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
-    }`, { tColor: { value: null }, tBloom: { value: null }, tShaft: { value: null }, uExpo: { value: 1 }, uBloom: { value: 0 }, uShaft: { value: 0 }, uShaftCol: { value: P.shaftColor }, uSat: { value: 1 }, uContrast: { value: 1 }, uSplit: { value: 0 }, uVignette: { value: 0 }, uGrain: { value: 0 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2() } });
-
-  const _sun = new THREE.Vector3(), _sz = new THREE.Vector2();
-  // a target the driver won't draw into means no post chain here: fall back to drawing straight to the screen
-  function targetsWork() {
-    const gl = renderer.getContext();
-    for (const t of [RT.scene, RT.comp, RT.down[0]]) {
-      renderer.setRenderTarget(t);
-      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { renderer.setRenderTarget(null); return false; }
-    }
-    renderer.setRenderTarget(null);
-    return true;
-  }
-  P.setQuality = (key) => {
-    const q = QUALITY[key] || QUALITY.medium;
-    P.q = q; P.key = key in QUALITY ? key : 'medium';
-    P.on = q.post && P.supported;
-    POSTU.uPostLin.value = P.on ? 1 : 0;
-    if (P.on && q.ao) { aoMat.defines.NS = q.ao; aoMat.needsUpdate = true; }
-    build();
-    if (P.on && !targetsWork()) { P.supported = false; P.on = false; P.q = QUALITY.low; P.key = 'low'; POSTU.uPostLin.value = 0; build(); }
-  };
-  P.setSize = (w, h) => { w = Math.max(2, Math.round(w)); h = Math.max(2, Math.round(h)); if (w === P.w && h === P.h && (RT.scene || !P.on)) return; P.w = w; P.h = h; build(); };
-  P.setExposure = (e) => { P.exposure = e; POSTU.uPostExpo.value = e; renderer.toneMappingExposure = e; };
-  P.render = (scene, camera, vmScene, vmCam, drawVM, dt = 0.016) => {
-    P.time += dt;
-    if (!P.on) {
-      renderer.setRenderTarget(null);
-      renderer.render(scene, camera);
-      if (drawVM) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vmScene, vmCam); renderer.autoClear = true; }
-      return;
-    }
-    const q = P.q;
-    // 1. the world
-    renderer.setRenderTarget(RT.scene); renderer.render(scene, camera);
-    const near = camera.near, far = camera.far, depth = RT.scene.depthTexture;
-    for (const m of [blurMat, compMat, shaftMaskMat]) { m.uniforms.uNear.value = near; m.uniforms.uFar.value = far; }
-    // 2. ambient occlusion
-    let aoTex = RT.white.texture;
-    if (q.ao && P.ao > 0) {
-      const u = aoMat.uniforms;
-      u.tDepth.value = depth; u.uRes.value.set(P.w, P.h); u.uRadius.value = P.aoRadius; u.uIntensity.value = P.aoIntensity; u.uProjInv.value.copy(camera.projectionMatrixInverse); u.uProjY.value = camera.projectionMatrix.elements[5]; u.uSeed.value = (P.time * 7.3) % 50;
-      pass(aoMat, RT.ao);
-      blurMat.uniforms.tDepth.value = depth;
-      blurMat.uniforms.tAO.value = RT.ao.texture; blurMat.uniforms.uDir.value.set(1 / RT.ao.width, 0); pass(blurMat, RT.ao2);
-      blurMat.uniforms.tAO.value = RT.ao2.texture; blurMat.uniforms.uDir.value.set(0, 1 / RT.ao.height); pass(blurMat, RT.ao);
-      aoTex = RT.ao.texture;
-    }
-    // 3. world × occlusion, then the hand on top of it
-    compMat.uniforms.tColor.value = RT.scene.texture; compMat.uniforms.tAO.value = aoTex; compMat.uniforms.tDepth.value = depth;
-    compMat.uniforms.uAO.value = q.ao ? P.ao : 0; compMat.uniforms.uShimmer.value = P.shimmer; compMat.uniforms.uTime.value = P.time;
-    pass(compMat, RT.comp);
-    if (drawVM) { renderer.setRenderTarget(RT.comp); renderer.autoClear = false; renderer.clearDepth(); renderer.render(vmScene, vmCam); renderer.autoClear = true; }
-    // 4. bloom
-    let bloomTex = RT.black.texture;
-    if (q.bloom && P.bloom > 0) {
-      brightMat.uniforms.tColor.value = RT.comp.texture; brightMat.uniforms.uTexel.value.set(1 / P.w, 1 / P.h); brightMat.uniforms.uExpo.value = P.exposure;
-      pass(brightMat, RT.down[0]);
-      for (let i = 1; i < LEVELS; i++) { downMat.uniforms.tSrc.value = RT.down[i - 1].texture; downMat.uniforms.uTexel.value.set(0.5 / RT.down[i - 1].width, 0.5 / RT.down[i - 1].height); pass(downMat, RT.down[i]); }
-      let src = RT.down[LEVELS - 1];
-      for (let i = LEVELS - 2; i >= 0; i--) { upMat.uniforms.tSrc.value = src.texture; upMat.uniforms.tAdd.value = RT.down[i].texture; upMat.uniforms.uTexel.value.set(0.5 / src.width, 0.5 / src.height); pass(upMat, RT.up[i]); src = RT.up[i]; }
-      bloomTex = RT.up[0].texture;
-    }
-    // 5. sun shafts, when the sun is on or near the screen
-    let shaftTex = RT.black.texture, shaftAmt = 0;
-    if (q.shafts && P.shafts > 0 && P.sunDir) {
-      _sun.copy(P.sunDir).multiplyScalar(400).add(camera.position).project(camera);
-      const fwd = camera.getWorldDirection(new THREE.Vector3()).dot(P.sunDir);
-      if (fwd > 0.05) {
-        const sx = _sun.x * 0.5 + 0.5, sy = _sun.y * 0.5 + 0.5, edge = Math.max(Math.abs(_sun.x), Math.abs(_sun.y));
-        shaftAmt = P.shafts * smooth(0.05, 0.5, fwd) * (1 - smooth(1.0, 1.9, edge));
-        if (shaftAmt > 0.01) {
-          shaftMaskMat.uniforms.tDepth.value = depth; shaftMaskMat.uniforms.uSun.value.set(sx, sy); shaftMaskMat.uniforms.uAspect.value = P.w / P.h;
-          pass(shaftMaskMat, RT.shaft);
-          shaftBlurMat.uniforms.tSrc.value = RT.shaft.texture; shaftBlurMat.uniforms.uSun.value.set(sx, sy); shaftBlurMat.uniforms.uSpan.value = 0.85;
-          pass(shaftBlurMat, RT.shaft2);
-          shaftTex = RT.shaft2.texture;
-        }
-      }
-    }
-    // 6. out to the screen
-    const f = finalMat.uniforms;
-    f.tColor.value = RT.comp.texture; f.tBloom.value = bloomTex; f.tShaft.value = shaftTex;
-    f.uExpo.value = P.exposure; f.uBloom.value = q.bloom ? P.bloom : 0; f.uShaft.value = shaftAmt;
-    f.uSat.value = P.sat; f.uContrast.value = P.contrast; f.uSplit.value = P.split; f.uVignette.value = P.vignette; f.uGrain.value = P.grain; f.uTime.value = P.time;
-    renderer.getDrawingBufferSize(_sz); f.uRes.value.copy(_sz);
-    pass(finalMat, null);
-  };
-  P.dispose = () => { P.on = false; build(); };
-  return P;
-}
-
-// ---------- the yard's haze: brighter and golden towards the sun, dusty red away from it ----------
-const HAZEU = { uSunView: { value: new THREE.Vector3(0, 0, -1) }, uSunHaze: { value: new THREE.Color(1.0, 0.82, 0.58).multiplyScalar(1.25) } };
-function hazeify(mat) {
-  if (!mat || mat.userData.hazed || !mat.fog || mat.isShaderMaterial || mat.isMeshBasicMaterial || mat.isPointsMaterial || mat.isSpriteMaterial || mat.isLineBasicMaterial) return;
-  mat.userData.hazed = true;
-  // the old cache key is taken now, before the wrapper replaces onBeforeCompile (three keys programs on its source)
-  const prev = mat.onBeforeCompile, baseKey = mat.customProgramCacheKey.call(mat);
-  mat.onBeforeCompile = function (sh, r) {
-    if (prev) prev.call(this, sh, r);
-    sh.uniforms.uSunView = HAZEU.uSunView; sh.uniforms.uSunHaze = HAZEU.uSunHaze;
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <fog_pars_fragment>', '#include <fog_pars_fragment>\nuniform vec3 uSunView; uniform vec3 uSunHaze;')
-      .replace('#include <fog_fragment>', `#ifdef USE_FOG
-        #ifdef FOG_EXP2
-          float hzF = 1.0 - exp(- fogDensity * fogDensity * vFogDepth * vFogDepth);
-        #else
-          float hzF = smoothstep(fogNear, fogFar, vFogDepth);
-        #endif
-        float hzS = pow(max(dot(normalize(-vViewPosition), uSunView), 0.0), 5.0);
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(fogColor, uSunHaze, hzS * 0.8), hzF);
-      #endif`);
-  };
-  mat.customProgramCacheKey = function () { return baseKey + '|haze'; };
-  mat.needsUpdate = true;
-}
-// ============================================================
-// Jacob's thoughts, spoken. The browser's own speech voices read his
-// lines, the Book comes back in a softer voice (his mother's, the way
-// he remembers it), and the gossip-flies whisper. While a thought is
-// spoken the world's sound drops and muffles, so it sits in his head.
-// Nothing is downloaded; what's available depends on the computer.
-// ============================================================
-const voice = {
-  ok: typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined',
-  list: [], cur: null, token: 0, onEnd: null, timer: 0,
-  settings: { on: true, vol: 0.9, jacob: '', book: '', auto: false },
-  duck: null,          // set by the game: (on) => muffle the world or let it back in
-};
-try { Object.assign(voice.settings, JSON.parse(localStorage.getItem('farm-of-rust-voice') || '{}')); } catch (e) { /* storage unavailable */ }
-function saveVoice() { try { localStorage.setItem('farm-of-rust-voice', JSON.stringify(voice.settings)); } catch (e) { /* storage unavailable */ } }
-
-// best guesses first: natural Australian voices in Edge, then Windows, Mac and Chrome's own, then any English voice
-const VOICE_PREF = {
-  jacob: [/William.*Natural/i, /James.*Austral/i, /\bLee\b/i, /Austral.*\bmale\b/i, /Ryan.*Natural/i, /Thomas.*Natural/i, /Guy.*Natural/i, /Christopher.*Natural/i, /Eric.*Natural/i,
-    /Google UK English Male/i, /\bDaniel\b/i, /\bArthur\b/i, /\bGeorge\b/i, /\bDavid\b/i, /\bMark\b/i, /\bAlex\b/i, /\bFred\b/i],
-  book: [/Natasha.*Natural/i, /Annette.*Natural/i, /Catherine.*Austral/i, /\bKaren\b/i, /Sonia.*Natural/i, /Libby.*Natural/i, /Aria.*Natural/i, /Jenny.*Natural/i,
-    /Google UK English Female/i, /\bHazel\b/i, /\bSerena\b/i, /\bMoira\b/i, /\bKate\b/i, /\bZira\b/i, /\bSamantha\b/i, /\bVictoria\b/i],
-};
-function loadVoices() {
-  if (!voice.ok) return;
-  try {
-    const all = speechSynthesis.getVoices() || [];
-    voice.list = all.filter(v => /^en([-_]|$)/i.test(v.lang || ''));
-    if (!voice.list.length) voice.list = all.slice();
-  } catch (e) { voice.list = []; }
-}
-if (voice.ok) { loadVoices(); try { speechSynthesis.addEventListener('voiceschanged', loadVoices); } catch (e) { speechSynthesis.onvoiceschanged = loadVoices; } }
-function pickVoice(role) {
-  if (!voice.list.length) loadVoices();
-  const want = voice.settings[role === 'whisper' ? 'jacob' : role];
-  if (want) { const v = voice.list.find(v => v.name === want); if (v) return v; }
-  for (const re of VOICE_PREF[role === 'book' ? 'book' : 'jacob']) { const v = voice.list.find(v => re.test(v.name)); if (v) return v; }
-  return voice.list.find(v => /en[-_]AU/i.test(v.lang)) || voice.list.find(v => /en[-_]GB/i.test(v.lang)) || voice.list[0] || null;
-}
-// the voices a role can cycle through in settings: "Automatic" first, then everything English
-function voiceChoices() { if (!voice.list.length) loadVoices(); return [''].concat(voice.list.map(v => v.name)); }
-function voiceLabel(name, role) {
-  if (!name) { const v = pickVoice(role); return 'Automatic' + (v ? ` (${shortVoice(v.name)})` : ''); }
-  return shortVoice(name);
-}
-const shortVoice = (n) => n.replace(/^Microsoft\s+/i, '').replace(/\s+Online\s+\(Natural\)/i, ' (natural)').replace(/\s*-\s*English\s*/i, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
-
-// what the voice actually reads: no ellipses or dashes read aloud, a pause where the page has one
-function speakable(text) {
-  return String(text).replace(/…/g, ', ').replace(/\s[–—]\s/g, ', ').replace(/[“”"]/g, '').replace(/\s+,/g, ',').replace(/^[,\s]+|[,\s]+$/g, '').trim();
-}
-function stopVoice() {
-  if (!voice.ok) return;
-  voice.token++;
-  clearTimeout(voice.timer);
-  if (voice.cur) { voice.cur = null; try { speechSynthesis.cancel(); } catch (e) { /* nothing to stop */ } }
-  if (voice.duck) voice.duck(false);
-}
-// role: 'jacob' (his thoughts), 'book' (the Book of Lost Echoes), 'whisper' (the flies)
-function speak(text, role = 'jacob', { muted = false, onEnd = null } = {}) {
-  if (!voice.ok || !voice.settings.on || muted) return false;
-  const say = speakable(text);
-  if (!say) return false;
-  let busy = false; try { busy = speechSynthesis.speaking || speechSynthesis.pending; } catch (e) { /* unknown */ }
-  stopVoice();
-  const u = new SpeechSynthesisUtterance(say), v = pickVoice(role), token = voice.token;
-  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-AU';
-  const natural = v && /Natural|Online/i.test(v.name);
-  if (role === 'book') { u.rate = natural ? 0.94 : 0.9; u.pitch = 1.0; u.volume = voice.settings.vol * 0.9; }
-  else if (role === 'whisper') { u.rate = 0.82; u.pitch = 0.55; u.volume = voice.settings.vol * 0.32; }
-  else { u.rate = natural ? 1.02 : 0.98; u.pitch = natural ? 0.94 : 0.86; u.volume = voice.settings.vol; }
-  const finish = () => {
-    if (token !== voice.token) return;
-    clearTimeout(voice.timer);
-    voice.cur = null;
-    if (voice.duck && role !== 'whisper') voice.duck(false);
-    if (onEnd) onEnd();
-  };
-  u.onend = finish; u.onerror = finish;
-  voice.cur = u;
-  if (voice.duck && role !== 'whisper') voice.duck(true);
-  // some browsers never fire onend: give the world its sound back after a generous guess at the length
-  voice.timer = setTimeout(finish, 2500 + say.length * 95 / (u.rate || 1));
-  // straight after a cancel Chrome can drop the next line, so give it a moment when something was playing
-  const go = () => { if (token !== voice.token) return; try { speechSynthesis.resume(); speechSynthesis.speak(u); } catch (e) { finish(); } };
-  if (busy) setTimeout(go, 70); else go();
-  return true;
-}
 // ============================================================
 // The shack: geometry, light, and the few things that move.
 // Units are metres. +x is east (the window), +z is south (the door).
@@ -2652,9 +2145,12 @@ function yardSky(Y) {
   const { scene, sunDir } = Y;
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uSun: { value: sunDir.clone() }, uHaze: { value: new THREE.Color(Y.hazeColor) }, ...POSTU },
+    uniforms: { uSun: { value: sunDir.clone() }, uHaze: { value: new THREE.Color(Y.hazeColor) }, uTime: YARD_TIME, ...POSTU },
     vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: POST_GLSL + `uniform vec3 uSun; uniform vec3 uHaze; varying vec3 vDir;
+    fragmentShader: POST_GLSL + `uniform vec3 uSun; uniform vec3 uHaze; uniform float uTime; varying vec3 vDir;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+      float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
       void main(){
         float h = vDir.y;
         vec3 zen = vec3(0.30, 0.36, 0.56);
@@ -2663,6 +2159,14 @@ function yardSky(Y) {
         c = mix(c, zen, smoothstep(0.18, 0.9, h));
         if (h < 0.0) c = uHaze * 0.92;
         float s = max(dot(normalize(vDir), normalize(uSun)), 0.0);
+        // high cirrus, the same mares' tails as over the road, drifting east on the wind
+        if (h > 0.015) {
+          vec2 p = vDir.xz / (h + 0.1) * 0.9 + vec2(uTime * 0.004, uTime * 0.0012);
+          float n = fbm(p * vec2(1.9, 0.55) + fbm(p * 0.7) * 1.4), n2 = fbm(p * 4.3 + 11.0);
+          float cov = smoothstep(0.52, 0.84, n * 0.8 + n2 * 0.2) * 0.8 * smoothstep(0.015, 0.3, h);
+          vec3 cc = mix(mid * 1.12, vec3(1.0, 0.9, 0.78) * (1.0 + 0.9 * pow(s, 3.0)), 0.55 + 0.35 * n2);
+          c = mix(c, cc, cov * 0.6);
+        }
         c += vec3(1.0, 0.86, 0.62) * (pow(s, 900.0) * 14.0 + pow(s, 40.0) * 0.6 + pow(s, 6.0) * 0.18);
         gl_FragColor = vec4(postOut(c), 1.0);
       }`,
@@ -3270,7 +2774,7 @@ function yardFar(Y) {
   stones.receiveShadow = true; scene.add(stones);
   // dry scrub tufts: thin blades, bleached grey-gold
   const tuft = (() => { const list = []; for (let i = 0; i < 9; i++) { const g = new THREE.PlaneGeometry(0.02, rand(0.12, 0.3)); g.translate(0, 0.08, 0); g.rotateZ(rand(-0.5, 0.5)); g.rotateY(rand(0, TAU)); list.push(g.toNonIndexed()); } return mergeGeos(list); })();
-  const scrubMat = new THREE.MeshStandardMaterial({ color: 0xa08a62, roughness: 0.9, side: THREE.DoubleSide });
+  const scrubMat = windy(new THREE.MeshStandardMaterial({ color: 0xa08a62, roughness: 0.9, side: THREE.DoubleSide }), 0.22, 1.5);   // dry grass that never quite holds still
   const NT = 520, tufts = new THREE.InstancedMesh(tuft, scrubMat, NT);
   for (let i = 0; i < NT; i++) {
     let x, z, ok = false;
@@ -3281,6 +2785,78 @@ function yardFar(Y) {
   scene.add(tufts);
 }
 
+// ---------- more small life: finer gibber, dead sticks, a wind chime under the eave, a roly-poly rolling past ----------
+// It throws its own dice, so everything the yard built before it lands where it always has.
+function yardExtras(Y) {
+  const { scene } = Y;
+  let seed = 90210; const Q = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const d = new THREE.Object3D(), col = new THREE.Color();
+  // gibber: a fine layer of pebbles, iron-red, ochre and black desert varnish; the paths are trodden bare
+  const PCOL = [[0.36, 0.12, 0.06], [0.1, 0.05, 0.035], [0.45, 0.24, 0.1], [0.24, 0.07, 0.04], [0.28, 0.24, 0.21]];
+  const NP = 1600, peb = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, flatShading: true }), NP);
+  let n = 0;
+  for (let i = 0; i < NP * 3 && n < NP; i++) {
+    const a = Q() * TAU, r = Math.sqrt(Q()) * (YARD.R + 22), x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (!Y.clear(x, z, 0.1) || (Y.onPath(x, z) && Q() < 0.75)) continue;
+    const sc = 0.014 + Q() * Q() * 0.05;
+    d.position.set(x, Y.hill(x, z, r) + sc * 0.3, z); d.rotation.set(Q() * 6, Q() * 6, Q() * 6); d.scale.set(sc * (1 + Q() * 0.6), sc * (0.45 + Q() * 0.3), sc * (1 + Q() * 0.4)); d.updateMatrix();
+    peb.setMatrixAt(n, d.matrix); const c = PCOL[Math.floor(Q() * PCOL.length)], v = 0.8 + Q() * 0.4; peb.setColorAt(n, col.setRGB(c[0] * v, c[1] * v, c[2] * v)); n++;
+  }
+  peb.count = n; peb.receiveShadow = true; scene.add(peb);
+  // dead sticks, bleached grey, where nothing has walked them to splinters
+  const stickG = new THREE.CylinderGeometry(0.35, 0.6, 1, 5); stickG.rotateZ(Math.PI / 2);
+  const NS = 80, sticks = new THREE.InstancedMesh(stickG, new THREE.MeshStandardMaterial({ color: 0x8e857a, roughness: 0.95, flatShading: true }), NS);
+  n = 0;
+  for (let i = 0; i < NS * 4 && n < NS; i++) {
+    const a = Q() * TAU, r = 3 + Math.sqrt(Q()) * (YARD.R + 20), x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (!Y.clear(x, z, 0.3) || Y.onPath(x, z)) continue;
+    const len = 0.25 + Q() * 0.8, th = 0.012 + Q() * 0.02;
+    d.position.set(x, Y.hill(x, z, Math.hypot(x, z)) + th * 0.4, z); d.rotation.set(0, Q() * TAU, (Q() - 0.5) * 0.1); d.scale.set(len, th, th); d.updateMatrix();
+    sticks.setMatrixAt(n, d.matrix); n++;
+  }
+  sticks.count = n; sticks.receiveShadow = true; scene.add(sticks);
+  // the wind chime: tin lids and bent spoons on fishing line, hung off the front eave by the deck
+  const CH = new THREE.Vector3(0.55, LIFT + EAVE - 0.04, YARD.house.z + RZ + 0.26);
+  const chime = new THREE.Group(); chime.position.copy(CH); scene.add(chime);
+  const tinM = new THREE.MeshStandardMaterial({ color: 0xb8b0a4, roughness: 0.35, metalness: 0.85 });
+  chime.add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.008, 16), tinM));
+  const bits = [];
+  for (let k = 0; k < 6; k++) {
+    const a = k / 6 * TAU, len = 0.2 + (k % 3) * 0.06, piv = new THREE.Group(); piv.position.set(Math.cos(a) * 0.055, -0.01, Math.sin(a) * 0.055); chime.add(piv);
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.0012, 0.0012, 0.12, 3), tinM); line.position.y = -0.06; piv.add(line);
+    const bit = new THREE.Mesh(k % 2 ? new THREE.CylinderGeometry(0.03, 0.03, 0.006, 12) : new THREE.BoxGeometry(0.014, len * 0.5, 0.004), tinM);
+    bit.position.y = -0.12 - (k % 2 ? 0 : len * 0.25); if (k % 2) bit.rotation.x = Math.PI / 2; bit.castShadow = true; piv.add(bit);
+    bits.push({ piv, ph: Q() * TAU, f: 1.6 + Q() * 1.1 });
+  }
+  Y.items.push(IT('chime', 'Wind chime', 'Look', CH.x, CH.y - 0.15, CH.z, 0.3, 0.35, 0.3));
+  // a roly-poly: a dry, round tangle of a bush that broke off at the root, rolling with the wind outside the fence
+  const tangle = []; for (let k = 0; k < 46; k++) { const g = new THREE.CylinderGeometry(0.006, 0.01, 0.55 + Q() * 0.3, 3); g.rotateX(Q() * TAU); g.rotateZ(Q() * TAU); g.rotateY(Q() * TAU); tangle.push(g); }
+  const roly = new THREE.Mesh(mergeGeos(tangle), new THREE.MeshStandardMaterial({ color: 0xa48b62, roughness: 1 })); roly.castShadow = true; roly.visible = false; scene.add(roly);
+  const RP = { on: false, wait: 18 + Q() * 20, x: 0, z: 0, v: 0, a: 0 };
+  let ring = 0;
+  Y.updaters.push((dt, time) => {
+    // a gust, the same slow swell the yard's wind bed has, with sharper bursts on top
+    const gust = clamp(0.35 + 0.3 * Math.sin(time * 0.23) + 0.35 * Math.max(0, Math.sin(time * 0.61 + 1.7)) ** 3, 0, 1);
+    for (const b of bits) { b.piv.rotation.x = Math.sin(time * b.f + b.ph) * (0.08 + 0.35 * gust); b.piv.rotation.z = Math.cos(time * b.f * 0.8 + b.ph) * (0.06 + 0.25 * gust); }
+    chime.rotation.y += dt * 0.3 * gust;
+    if ((ring -= dt * (0.4 + gust * 3)) < 0) {
+      ring = 0.8 + Math.random() * 2.5;
+      const sp = spot(CH, 9), base = [2093, 2349, 2637, 3136, 3520][Math.floor(Math.random() * 5)];
+      if (sp.gain > 0.02) { tone({ f: base, dur: 1.6, gain: 0.014 * sp.gain * (0.4 + gust), attack: 0.002, pan: sp.pan }); tone({ f: base * 2.76, dur: 0.6, gain: 0.004 * sp.gain, attack: 0.002, pan: sp.pan }); }
+    }
+    if (!RP.on) {
+      if ((RP.wait -= dt * (0.5 + gust)) > 0) return;
+      const side = Math.random() < 0.5 ? -1 : 1;
+      Object.assign(RP, { on: true, x: -45, z: side * (YARD.R + 5 + Math.random() * 12), v: 0, a: 0 });
+      roly.visible = true; roly.scale.setScalar(0.8 + Math.random() * 0.5);
+    }
+    RP.v += ((1.4 + gust * 3.2) - RP.v) * Math.min(1, dt * 1.5);
+    RP.x += RP.v * dt; RP.a += RP.v * dt / 0.36;
+    const r = Math.hypot(RP.x, RP.z), hop = Math.abs(Math.sin(RP.a * 0.5)) * 0.18 * gust;
+    roly.position.set(RP.x, Y.hill(RP.x, RP.z, r) + 0.34 * roly.scale.x + hop, RP.z); roly.rotation.set(0, 0, -RP.a);
+    if (RP.x > 45) { RP.on = false; roly.visible = false; RP.wait = 30 + Math.random() * 45; }
+  });
+}
 // keep scatter away from buildings, pens and paths
 function yardClearance(Y) {
   const blocks = [
@@ -3977,6 +3553,7 @@ function buildYard(renderer, T, TY) {
   yardGround(Y); yardSky(Y);
   yardHouse(Y); yardWoodpile(Y); yardWater(Y); yardPen(Y); yardCoop(Y); yardShed(Y); yardTractor(Y); yardUte(Y); yardProps(Y); yardTrees(Y);
   yardFence(Y); yardPlants(Y); yardHerd(Y); yardFowl(Y); yardFlies(Y); yardJaws(Y); yardDevil(Y); yardStrider(Y); yardDung(Y); yardFar(Y);
+  yardExtras(Y);
   yardCollectibles(Y);
   Y.S.build(scene);
 
@@ -4180,131 +3757,6 @@ function resetYardWorld(Y) {
   Y.flies.scatter = 0;
   for (const c of Y.herd.cows) { c.x = c.homeX ?? c.x; c.z = c.homeZ ?? c.z; cowCollider(c); c.mode = 'idle'; c.idle = rand(2, 9); }
 }
-// ============================================================
-// Jacob himself: tan work pants and heavy buckled boots you see
-// when you look down, a shadow-only stand-in for the rest of him
-// (duster, arms, head), and the pale clawed hand that holds things.
-// ============================================================
-const LEG = { thigh: 0.45, shin: 0.43, ankle: 0.1, spread: 0.1, back: 0.18 };
-LEG.hip = LEG.ankle + LEG.shin + LEG.thigh;
-
-function remapV(g, a, b) { const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, a + (b - a) * uv.getY(i)); return g; }
-// shape a box into a boot's foot: rounded toe in front (-z), rounded heel behind, the top sloping down to the toe
-function footShape(g, toeLen = 0.205, heelLen = 0.075, topSlope = true) {
-  g.translate(0, 0, (heelLen - toeLen) / 2);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const toe = clamp((-z - (toeLen - 0.1)) / 0.1, 0, 1), heel = clamp((z - (heelLen - 0.035)) / 0.035, 0, 1);
-    x *= Math.sqrt(Math.max(0.04, 1 - toe * toe * 0.9)) * (1 - heel * heel * 0.32) * (1 + 0.06 * (1 - toe) * (z < 0 ? 1 : 0));
-    if (topSlope && y > 0) y -= toe * toe * 0.04 + Math.max(0, -z) * 0.11;
-    if (toe > 0.85) z += (1 - Math.abs(y) / 0.05) * 0.0 + (y > 0 ? 0.006 : 0);
-    p.setXYZ(i, x, y, z);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-
-function buildBody(TB) {
-  const mat = {
-    pants: new THREE.MeshStandardMaterial({ map: TB.pants, roughness: 0.93 }),
-    boot: new THREE.MeshStandardMaterial({ map: TB.boot, roughness: 0.36, metalness: 0.08, color: 0xd8c4b0 }),
-    sole: new THREE.MeshStandardMaterial({ color: 0x1b1613, roughness: 0.92 }),
-    buckle: new THREE.MeshStandardMaterial({ color: 0xa29b90, roughness: 0.28, metalness: 0.95 }),
-    strap: new THREE.MeshStandardMaterial({ map: TB.boot, color: 0x9a8676, roughness: 0.62 }),
-    belt: new THREE.MeshStandardMaterial({ color: 0x3a2517, roughness: 0.62 }),
-    shirt: new THREE.MeshStandardMaterial({ map: TB.pants, color: 0x8a8a7a, roughness: 0.95 }),
-    ghost: new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
-  };
-  const mesh = (g, m, parent, cast = true) => { const o = new THREE.Mesh(g, m); o.castShadow = cast; o.receiveShadow = true; parent.add(o); return o; };
-  const root = new THREE.Group();          // under the player, turned by the legs' yaw
-  const upper = new THREE.Group();         // chest turns with the view
-  root.add(upper);
-  const hips = new THREE.Group(); hips.position.y = LEG.hip; root.add(hips);
-  // the waist and chest are never drawn (from up here they'd only hide the legs), but they still cast a shadow
-  { const add = (g, parent, y, sz = 0.7) => { const o = new THREE.Mesh(g, mat.ghost); o.position.y = y; o.scale.z = sz; o.castShadow = true; parent.add(o); };
-    add(new THREE.CylinderGeometry(0.166, 0.15, 0.22, 14), hips, 0.02);
-    add(new THREE.CylinderGeometry(0.17, 0.168, 0.34, 14), upper, LEG.hip + 0.29, 0.72); }
-  // legs: thigh pivots at the hip, shin at the knee, the boot at the ankle
-  const legs = [-1, 1].map((s) => {
-    const thigh = new THREE.Group(); thigh.position.set(s * LEG.spread, 0, 0); hips.add(thigh);
-    mesh(remapV(lathe([[0.062, -LEG.thigh], [0.068, -0.38], [0.079, -0.25], [0.086, -0.12], [0.082, -0.03], [0.076, 0.04], [0.0, 0.05]], 16), 0.5, 1.0), mat.pants, thigh);
-    const knee = new THREE.Group(); knee.position.y = -LEG.thigh; thigh.add(knee);
-    mesh(new THREE.SphereGeometry(0.064, 12, 8), mat.pants, knee);
-    mesh(remapV(lathe([[0.075, -0.27], [0.07, -0.24], [0.059, -0.2], [0.056, -0.1], [0.06, 0.0], [0.064, 0.035]], 16), 0.0, 0.5), mat.pants, knee);
-    const ankle = new THREE.Group(); ankle.position.y = -LEG.shin; knee.add(ankle);
-    const boot = new THREE.Group(); ankle.add(boot); boot.scale.x = s;       // mirrored so the buckles sit on the outside of each foot
-    { const sh = mesh(lathe([[0.056, -0.03], [0.06, 0.05], [0.062, 0.14], [0.066, 0.21], [0.069, 0.25], [0.064, 0.255]], 16), mat.boot, boot); sh.scale.set(0.92, 1, 1.1);
-      const foot = footShape(new THREE.BoxGeometry(0.104, 0.095, 0.28, 4, 3, 12)); foot.translate(0, -0.028, 0); mesh(foot, mat.boot, boot);
-      const sole = footShape(new THREE.BoxGeometry(0.118, 0.028, 0.3, 4, 1, 12), 0.215, 0.085, false); sole.translate(0, -0.086, 0); mesh(sole, mat.sole, boot);
-      const heel = mesh(new THREE.BoxGeometry(0.098, 0.02, 0.07), mat.sole, boot); heel.position.set(0, -0.09, 0.045);
-      // a strap over the instep with a square buckle, another round the top of the shaft
-      const instep = mesh(new THREE.TorusGeometry(0.056, 0.009, 4, 16, Math.PI), mat.strap, boot); instep.position.set(0, -0.03, -0.06); instep.rotation.x = -0.35; instep.scale.set(1.02, 1.0, 2.2);
-      const top = mesh(new THREE.TorusGeometry(0.068, 0.006, 4, 20), mat.strap, boot); top.rotation.x = Math.PI / 2; top.position.y = 0.2; top.scale.set(0.95, 1.12, 2.6);
-      for (const [y, z, w] of [[-0.01, -0.06, 0.028], [0.2, 0.0, 0.022]]) { const bk = mesh(new THREE.BoxGeometry(0.007, w, w * 1.15), mat.buckle, boot); bk.position.set(y < 0 ? 0.056 : 0.064, y, z); const hole = mesh(new THREE.BoxGeometry(0.008, w * 0.55, w * 0.6), mat.sole, boot); hole.position.set(y < 0 ? 0.0565 : 0.0645, y, z); }
-      const tab = mesh(new THREE.BoxGeometry(0.03, 0.04, 0.006), mat.strap, boot); tab.position.set(0, 0.26, 0.07); tab.rotation.x = -0.2; }
-    return { s, thigh, knee, ankle, boot };
-  });
-  // shadow-only stand-in: head, shoulders, arms, the duster to the knees
-  const ghost = new THREE.Group(); upper.add(ghost);
-  { const add = (g, x, y, z, rx = 0, rz = 0, sx = 1, sy = 1, sz = 1) => { const o = new THREE.Mesh(g, mat.ghost); o.position.set(x, y, z); o.rotation.set(rx, 0, rz); o.scale.set(sx, sy, sz); o.castShadow = true; ghost.add(o); return o; };
-    add(new THREE.SphereGeometry(0.11, 12, 8), 0, 1.69, 0.02, 0, 0, 0.9, 1.12, 1);
-    add(new THREE.CylinderGeometry(0.05, 0.06, 0.12, 8), 0, 1.55, 0.03);
-    add(new THREE.BoxGeometry(0.46, 0.14, 0.24), 0, 1.44, 0.03);
-    add(new THREE.CylinderGeometry(0.24, 0.31, 0.95, 12, 1, true), 0, LEG.hip - 0.02 + 0.0, 0.04, 0, 0, 1, 1, 0.68);
-    ghost.userData.armL = add(new THREE.CylinderGeometry(0.05, 0.045, 0.62, 8), -0.26, 1.15, 0.0, 0, 0.08);
-    ghost.userData.armR = add(new THREE.CylinderGeometry(0.05, 0.045, 0.62, 8), 0.24, 1.2, -0.12, -0.7, -0.15);
-  }
-  // ---------- pose ----------
-  const st = { yaw: 0, hipTwist: 0, phase: 0, amp: 0, crouch: 0, kick: -1, back: 0, upperYaw: 0, sway: 0 };
-  const legFK = (a, k) => LEG.thigh * Math.cos(a) + LEG.shin * Math.cos(a - k);
-  function update(dt, p, camYaw, { sprint = false, groundY = 0 } = {}) {
-    const vx = p.vx, vz = p.vz, sp = Math.hypot(vx, vz);
-    // the legs turn to follow the view: quickly when walking, lazily when standing still
-    let d = Math.atan2(Math.sin(camYaw - st.yaw), Math.cos(camYaw - st.yaw));
-    if (sp > 0.15) st.yaw += d * (1 - Math.exp(-dt * 8));
-    else if (Math.abs(d) > 0.9) st.yaw += d * (1 - Math.exp(-dt * 4));
-    // walking direction relative to the body: strafing twists the hips, walking backwards runs the cycle backwards
-    const fx = -Math.sin(st.yaw), fz = -Math.cos(st.yaw), rxv = Math.cos(st.yaw), rzv = -Math.sin(st.yaw);
-    const fwd = vx * fx + vz * fz, side = vx * rxv + vz * rzv;
-    let twist = 0, dir = 1;
-    if (sp > 0.15) { const back = fwd < -0.2 * sp; dir = back ? -1 : 1; twist = clamp(Math.atan2(side, Math.abs(fwd) + 0.25 * sp) * (back ? -1 : 1), -0.75, 0.75); }
-    st.hipTwist += (twist - st.hipTwist) * (1 - Math.exp(-dt * 8));
-    st.amp += ((sp > 0.12 ? clamp(sp / 1.45, 0, 1) * (sprint ? 0.62 : 0.44) : 0) - st.amp) * (1 - Math.exp(-dt * 9));
-    st.phase = p.bob * dir;
-    const crouch = st.crouch;
-    hips.rotation.y = -st.hipTwist; hips.rotation.z = Math.sin(st.phase) * st.amp * 0.08;
-    let lowest = 0;
-    legs.forEach((L, i) => {
-      const ph = st.phase + (i ? Math.PI : 0);
-      let a = Math.cos(ph) * st.amp, k = Math.max(0, -Math.sin(ph)) * st.amp * 1.7 + 0.04;
-      // milking: down on the stool
-      a = a * (1 - crouch) + 1.3 * crouch; k = k * (1 - crouch) + 2.15 * crouch;
-      // the compass-weed kick, right leg: lift, dig the heel in, swing it back, kick
-      if (st.kick >= 0 && i === 1) {
-        const t = st.kick;
-        const keys = [[0, 0, 0.05, 0], [0.18, 0.75, 1.1, 0.25], [0.42, 0.32, 0.12, 0.55], [0.6, 0.3, 0.1, 0.55], [0.75, -0.45, 0.9, -0.2], [0.9, 0.85, 0.05, -0.55], [1.15, 0, 0.05, 0]];
-        let j = 0; while (j < keys.length - 2 && t > keys[j + 1][0]) j++;
-        const [t0, a0, k0, f0] = keys[j], [t1, a1, k1, f1] = keys[j + 1], u = smooth(0, 1, (t - t0) / (t1 - t0));
-        a = a0 + (a1 - a0) * u; k = k0 + (k1 - k0) * u; L.kickFoot = f0 + (f1 - f0) * u;
-      } else L.kickFoot = 0;
-      L.thigh.rotation.x = a; L.knee.rotation.x = -k;
-      L.ankle.rotation.x = clamp(-(a - k), -0.9, 0.9) * (1 - crouch * 0.4) + (Math.cos(ph) > 0.7 ? 0.12 : 0) * st.amp * 2 + (L.kickFoot || 0);
-      L.thigh.rotation.y = L.s * 0.06; L.thigh.rotation.z = -L.s * (0.03 + crouch * 0.2);
-      if (!(st.kick >= 0 && i === 1)) lowest = Math.max(lowest, legFK(a, k));
-    });
-    hips.position.y = LEG.ankle + lowest;
-    // the chest follows the view; the duster sways
-    upper.position.y = hips.position.y - LEG.hip;
-    upper.rotation.y = Math.atan2(Math.sin(camYaw - st.yaw), Math.cos(camYaw - st.yaw));
-    ghost.userData.armL.rotation.x = Math.sin(st.phase) * st.amp * 0.6;
-    root.position.set(p.x + Math.sin(st.yaw) * LEG.back * (1 - crouch * 0.6), groundY, p.z + Math.cos(st.yaw) * LEG.back * (1 - crouch * 0.6));
-    root.rotation.y = st.yaw;
-    if (st.kick >= 0) { st.kick += dt; if (st.kick > 1.15) st.kick = -1; }
-  }
-  return { root, update, st, legs, kick() { st.kick = 0; }, setCrouch(v) { st.crouch = v; }, snap(yaw) { st.yaw = yaw; } };
-}
-
 // ---------- the view model: Jacob's hand and whatever's in it, drawn over the scene ----------
 function buildViewModel(TB, T) {
   const scene = new THREE.Scene();
@@ -4910,6 +4362,7 @@ const YACTS = {
   barrel: (n) => [J(pickLine(['Burn barrel. Bills go in here once I’ve read them. A ceremony of sorts.', 'Cogswell’s handwriting burns blue. I don’t know why. I don’t want to know.'], n))],
   clothesline: (n) => [J(pickLine(['Rotary line. Spins when the wind’s up. Everything on it dries in four minutes and stays red forever.', 'One sock. There were two. The yard took the other one.'], n))],
   windmill: (n) => [J(pickLine(['Windmill. The bore went salty years ago. It still turns now and then, out of habit. I know the feeling.', 'Missing four blades. It used to sing. Now it coughs.'], n))],
+  chime: (n) => [J(pickLine(['Dad hung that up. Tin lids and bent spoons. When it’s ringing, the wind’s up, and I know to tie things down.', 'Only thing out here that makes a sound like it’s happy about something.', 'Quiet means still air. Still air means the flies.'], n))],
   dunny: (n) => [J(pickLine(['The dunny. Check under the seat for Tunnel-Webs. Then check again.', 'Dad built it. Only thing on the farm that’s never broken. Make of that what you will.'], n))],
   ngate: (n) => [J(pickLine(['Welded it myself out of scrap. Hubcaps, a bed frame, half a shovel. Keeps out the honest ones.', 'Bleak Flats is that way. Twenty clicks, and every one of them wants me dead.'], n))],
   stobie: (n) => [J(pickLine(['Stobie pole. Steel and concrete. Somebody tried to cut it down for scrap and gave up halfway. Respect.', 'Wires used to run off it. Information, the Book reckons. In towers.'], n))],

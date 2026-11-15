@@ -18,7 +18,18 @@ game/
   road/life.js      what lives on it: gums, spinifex, striders, boars, the wreck and its swarm, and the rest
   road/mainroad.js  along the old main road: the falling power line, Tally Bore, burst mains, Scream-Peas, the escarpment's Drop-Stalkers
   road/caves.js     three shallow caves to walk into, and the relics in them
-  road/main.js      the player: the tractor and Jacob on foot, the camera, HUD, notebook, sound, survival
+  road/air.js       the wind and what it carries: gusts, lifted dust, smoke, spray, wheel tracks, footprints, willy-willies
+  road/detail.js    the ground close up: its shader (no tiling, salt crust, cracked bitumen, wet ground) and the ring of pebbles, grass and sticks
+  road/shapes.js    shapes for the scatter: fractured rocks, saltbush, dead bushes and trees, spoil heaps, the mesas
+  road/props.js     things to kick, throw, open and work: stones, litter, Tally Bore's doors and pump, the wrecks, the phone
+  road/sound.js     the road's synthesised sound: wind, engine, wires, tin, footsteps by surface, every knock and clang
+  road/input.js     keyboard, mouse and Xbox controller
+  road/jacob.js     Jacob's legs and boots, dressed for the road
+  road/main.js      the player: the tractor and Jacob on foot, the camera, the sky and sun, HUD, notebook, survival
+  shared/post.js      the picture: HDR, contact shade, bloom, sun shafts, heat shimmer, the grade; quality presets; the sun-tinted haze
+  shared/particles.js glints and soft particles (dust, smoke, sparks, spray)
+  shared/voice.js     Jacob's spoken thoughts and the Book's voice
+  shared/body.js      Jacob's body: legs, boots and shadow, walking with him
   shared/notebook.js  the idea notebook all three pages write to
   shared/tractor.js   Jacob's tractor, one model for the yard and the road
 tools/build-pc.mjs  builds the single-file PC copies (npm install && npm run build:pc)
@@ -57,6 +68,55 @@ lives here and how it behaves, and where the chapters disagree with it, the Guid
 
 Off the road there are ruined shacks, the pipeline and its leaks, a Judas-Wattle, a Miser-Boab, an
 Iron-Bark Sentinel, Argus-Bushes, compass-weed, thorny-devils and jaw-jaws.
+
+### How the road looks and moves
+
+The road draws through the same picture as the yard (`game/shared/post.js`): HDR light, contact shade,
+bloom, sun shafts, heat shimmer over the far ground, and a film grade. The sky has high cirrus drifting on
+the wind, a hard sun that blooms, and a horizon the same colour as the haze, so far things fade into it.
+The haze itself goes golden towards the sun. Shadows are soft and don't crawl as the tractor moves.
+
+- **The ground** is drawn in world space at three scales that never line up, so it doesn't tile, with
+  broad patches of redder gravel and paler wash. The salt pans break into crust polygons with raised,
+  sun-caught edges. The old bitumen shows its chip-seal stones and a net of cracks full of red dust.
+  Round the pipeline's leaks the ground is dark and wet.
+- **Up close**, a ring of small things follows the camera: pebbles of ironstone and desert varnish,
+  stones bedded into the dirt, dry grass that leans with the wind, dead sticks, and flecks of mica,
+  salt crystal and broken glass that flash when the sun catches them. Gravel gathers on the shoulders.
+- **Further out** the land has fractured rocks in piles, saltbush in patches, dead bushes, the odd
+  bleached dead tree, banded spoil heaps round the mines, and mesas on the horizon with talus slopes,
+  stepped strata and a caprock lip.
+- **The air** moves: the wind swells and gusts, lifts dust off the plain, bends the grass and the
+  spinifex, carries the smoke and the spray from the burst mains, and now and then a willy-willy walks
+  across the flat. The tractor throws dust and leaves tracks; Jacob leaves footprints that the wind
+  fills in. Tin roofs rattle in the gusts, the windmill squeaks, washing flaps on the line.
+- **Moving** is eased the way the yard does it: Jacob gets going and stops without sliding, and his
+  steps sound like what they land on (dirt, seal, salt, boards, scree, rock). His legs, boots and shadow
+  are there when you look down. The tractor's throttle and wheel are eased, it holds a speed with the
+  pedal part-way down, it sits on its springs and leans into turns, and the chase camera swings round a
+  beat late and keeps out of the rock. An Xbox controller works throughout.
+- **Settings** (in the notebook's Settings): quality (Low, Medium, High, Ultra), brightness, field of
+  view, head-bob, look sensitivity, invert, rumble, sound, and Jacob's spoken thoughts and their volume.
+  The page also trades sharpness for frame rate on its own when it needs to.
+
+### Things to do on the road
+
+All of these are new on the road (Experimental).
+
+- **Throw stones.** Click, Q or RT on foot. Tin clangs, timber knocks, glass insulators clink, the live
+  wire spits sparks, the spinifex thrashes at a stone as it would at a leg, and a Scream-Pea pod you hit
+  splits and screams. A thorny-devil sends it straight back where it came from (the Farm of Rust
+  sketch's rule), so don't stand still after throwing one.
+- **Kick the litter.** Tins and bottles lie along the shoulders, round the ruins and the wrecks. They
+  skitter and roll when Jacob walks into them, and fly when the tractor does.
+- **Tally Bore, worked.** The verandah house's front door opens (the verandah still comes down if you
+  linger under it). The pump-house door bangs in the wind until you latch it. The mailbox holds a final
+  notice from H. R. Cogswell and Associates. The car's bonnet lifts on nothing. The windmill has a brake.
+  The hand pump by the windmill gives up one cupful of bore water into your bag and a little more into
+  the trough, then runs dry. There's a light switch, a dead wireless, empty fuel drums, washing on the
+  line, and a row of tins on a plank for target practice.
+- **On the roads**: a ute on its roof in the ditch, a water truck stripped to its chassis, a burnt-out
+  car that is still, somehow, smoking, a cow's bones, and an emergency phone with wind in the line.
 
 ### The old main road
 
@@ -159,6 +219,13 @@ The Field Guide wins on species and behaviour. The chapters are flavour.
   Guide describes Bleak Flats differently (the prototype had a crater rim and a Scream-Pea fence),
   that's an easy swap.
 
+### The yard, lately
+
+The yard has high cirrus drifting over it now, dry grass that never quite holds still, a finer layer of
+gibber pebbles and dead sticks, a wind chime of tin lids and bent spoons under the front eave that rings
+when the wind gets up, and now and then a roly-poly, a dry bush broken off at the root, rolling past
+outside the fence.
+
 ### The tractor
 
 `game/shared/tractor.js` builds the one tractor both pages use: an old long-bonnet two-cylinder,
@@ -192,8 +259,14 @@ Then open <http://localhost:8000/>. To go straight to the yard or the road, open
 
 Controls: WASD walk, Shift run (outside), mouse look, E use, F or left-click swing, Q swap tools,
 B the Book, Tab the menu, N jot an idea. An Xbox controller also works when the page is opened
-directly in Chrome or Edge. On the road: W/S drive, A/D steer, E climb down or aboard, F drink,
-G Sulphur-Salts, R the radio, V seat or chase view. Walk into a cave mouth to go in.
+directly in Chrome or Edge. On the road: W/S drive, A/D steer, E climb down or aboard, use or open
+things, F drink, G Sulphur-Salts, R the radio, V seat or chase view, click or Q throw a stone. Walk into
+a cave mouth to go in. With a controller on the road: RT throttle, LT brake, left stick steers or walks,
+right stick looks, A use, X drink, Y view, B radio, LB Sulphur-Salts; on foot RT throws a stone and L3
+runs.
+
+For testing, `road.html?debug` exposes `window.__road`, `?q=low|medium|high|ultra` forces a quality
+preset, and `?ratio=1` fixes the pixel ratio.
 
 ## Canon, Plausible, Experimental
 
