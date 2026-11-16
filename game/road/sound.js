@@ -126,8 +126,14 @@ export const sfx = {
   flap: (s = HERE) => { for (let i = 0; i < 2; i++) noiseHit({ f: 700, q: 0.8, dur: 0.12, gain: 0.05 * s.gain, attack: 0.03, delay: i * 0.14, pan: s.pan }); },
   static: () => { noiseHit({ f: 2400, q: 0.6, dur: 2.6, gain: 0.06, attack: 0.2 }); tone({ type: 'sine', f: 1180, f2: 640, dur: 1.2, gain: 0.012, delay: 0.5, vib: 80 }); },
   ring: () => { for (let i = 0; i < 2; i++) for (const f of [1340, 1680]) tone({ type: 'triangle', f, dur: 0.4, gain: 0.02, delay: i * 0.6, vib: 18 }); },
-  scan: () => { tone({ type: 'square', f: 1400, f2: 2100, dur: 0.5, gain: 0.02, lp: 4000 }); noiseHit({ type: 'highpass', f: 6000, dur: 0.4, gain: 0.04, attack: 0.1 }); },
+  scan: (s = HERE) => { tone({ type: 'square', f: 1400, f2: 2100, dur: 0.9, gain: 0.02 * s.gain, lp: 4000, pan: s.pan }); noiseHit({ type: 'highpass', f: 6000, dur: 0.8, gain: 0.04 * s.gain, attack: 0.1, pan: s.pan }); },
+  // the slab of ship plating: pistons screaming, a groan you feel in the seat
+  gate: (s = HERE) => { tone({ type: 'sawtooth', f: 52, f2: 78, dur: 4.2, gain: 0.14 * s.gain, lp: 420, vib: 4, pan: s.pan }); tone({ type: 'sawtooth', f: 880, f2: 1900, dur: 3.6, gain: 0.022 * s.gain, lp: 5200, vib: 90, delay: 0.3, pan: s.pan }); tone({ type: 'sawtooth', f: 1310, f2: 2400, dur: 3.1, gain: 0.012 * s.gain, lp: 5200, vib: 120, delay: 0.7, pan: s.pan }); noiseHit({ type: 'lowpass', f: 320, dur: 4, gain: 0.22 * s.gain, attack: 0.3, pan: s.pan }); },
   bite: () => { noiseHit({ f: 1800, q: 2, dur: 0.05, gain: 0.4 }); tone({ f: 70, f2: 40, dur: 0.2, gain: 0.2 }); },
+  // the animals: a boar rooting, a boar that's had a fright, small copper feet on tin
+  grunt: (s = HERE) => { tone({ type: 'sawtooth', f: 92 + Math.random() * 20, f2: 66, dur: 0.2, gain: 0.05 * s.gain, lp: 480, pan: s.pan }); noiseHit({ type: 'lowpass', f: 340, dur: 0.12, gain: 0.05 * s.gain, pan: s.pan }); },
+  squeal: (s = HERE) => { tone({ type: 'sawtooth', f: 820, f2: 1500, dur: 0.38, gain: 0.045 * s.gain, lp: 3200, vib: 70, pan: s.pan }); noiseHit({ f: 2400, q: 1.5, dur: 0.2, gain: 0.04 * s.gain, pan: s.pan }); },
+  skitter: (s = HERE) => { for (let i = 0; i < 5; i++) noiseHit({ f: 3400 + Math.random() * 600, q: 5, dur: 0.02, gain: 0.07 * s.gain, delay: i * 0.034, pan: s.pan }); },
 };
 
 // while Jacob thinks out loud the world goes quiet and dull, as if heard through his own head

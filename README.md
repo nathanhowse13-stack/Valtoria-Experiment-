@@ -25,6 +25,8 @@ game/
   road/rooms.js     insides: the verandah house furnished, a hat and a shelf in the racked house, the shacks' fire rings, puddles at the leaks
   road/hands.js     Jacob's hand, drawn over the scene: throwing, reaching, drinking
   road/far.js       past the edge of the land: ground out to the horizon, and three ranges of hills fading into the haze
+  road/driver.js    Jacob at the wheel: duster, goggles, scarf, hands on the rim, a head that looks where you look
+  road/gate.js      the south gate of Bleak Flats: the queue, the Ironshell, the scan, the entry tax, the slab of ship plating
   road/sound.js     the road's synthesised sound: wind, engine, wires, tin, footsteps by surface, every knock and clang
   road/input.js     keyboard, mouse and Xbox controller
   road/jacob.js     Jacob's legs and boots, dressed for the road
@@ -96,6 +98,13 @@ The haze itself goes golden towards the sun. Shadows are soft and don't crawl as
   spinifex, carries the smoke and the spray from the burst mains, and now and then a willy-willy walks
   across the flat. The tractor throws dust and leaves tracks; Jacob leaves footprints that the wind
   fills in. Tin roofs rattle in the gusts, the windmill squeaks, washing flaps on the line.
+- **Jacob is at the wheel.** In the chase view he sits in the cab in the heavy canvas duster, polarised
+  goggles and sun scarf Chapter One dresses him in, gripping the wheel white-knuckled (Chapter Two). His
+  arms follow the rim as it turns, his head turns where you look and glances about when you don't, he
+  leans into the turns, his boots work the pedals and the scarf's tail streams behind him. The steering
+  wheel and the front wheels turn. From the seat you see what he would: his hands on the wheel, the
+  duster over his lap, his knees and boots. The engine shudders through the whole machine, lumpy at idle
+  and harder with the throttle open. The mouse wheel pulls the chase camera in and out.
 - **Jacob's hand** shows when it's doing something: it picks up a stone, cocks it back beside his head
   and lets go (the stone leaves his hand at the top of the swing), reaches out to whatever he uses,
   and brings the water bag up when he drinks. It's lit by the same sun as everything else.
@@ -130,8 +139,27 @@ All of these are new on the road (Experimental).
   The racked house has a hat on a nail by the door. Each roadside shack has the ring of stones where
   its fires were. The pipeline's leaks have left puddles that hold the sky and ripple where the water
   still drips or sprays into them.
+- **The animals answer back.** Boars root with their noses down, kicking up dust and grunting, lift
+  their heads to watch you when you get close, and bolt squealing if you come closer or a stone lands
+  near them. Jaw-jaws worry at the wrecks, parting a strand of wire with a spark now and then, and
+  scatter from a noise. Thorny-devils come slowly round to keep you in front of them, and rock along a
+  few steps at a time when left alone. A Drop-Stalker flicks an ear on its ledge, and a stone that
+  finds one flattens it to the rock the way holding its eye does.
 - **On the roads**: a ute on its roof in the ditch, a water truck stripped to its chassis, a burnt-out
   car that is still, somehow, smoking, a cow's bones, and an emergency phone with wind in the line.
+
+### The south gate
+
+The road used to end on a card at the walls. Now the gate is played out as Chapter Two has it. The queue
+moves: the truck at the booth is scanned, the slab of ship plating lifts on its pistons, the truck goes
+in under the wall, the slab comes down and the next one pulls up. Travellers on foot wait along the
+shoulder and watch you come. Stop on the line and it's your turn: the Ironshell (heavy variant, officious
+grey going to rust, a crimson vision slit, a speaker grill where a throat should be) says "Scan.", Jacob
+leans out of the seat with his scarf pulled down and offers his wrist, and the lens in the gauntlet's
+palm throws a grid of green light over it. Caste, name, solvency. Then the entry tax, and a choice the
+chapter only states: five bits, or three ounces of raw water out of what you carried all the way. Pay
+either and the gate groans up. The Ironshell's words are the chapter's own (Canon); choosing how to pay,
+the lamp on the booth and the people on foot are this sketch's (Experimental).
 
 ### The old main road
 

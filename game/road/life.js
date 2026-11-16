@@ -14,7 +14,8 @@
 //   Farm of Rust sketch: thorny-devils, jaw-jaws, the Miser-Boab and the Iron-Bark Sentinel.
 // ============================================================
 import { THREE, TAU, clamp, lerp, smooth, rng, G, S, P, W, blockers, shades, addThing, bark, once, meet, hooks, MX, rodMX, planarUV, merge, mesh, M, SWAY, placeRelic, GUIDE, CH1, CH2, FARM, NEW } from './core.js';
-import { dustKick } from './air.js';
+import { dustKick, sparkBurst } from './air.js';
+import { spot } from './sound.js';
 import { h, roadDist, nearestRoad, canyonAxisX, CANYON, CAVE_MOUTHS, ridgeX, PITS, ADIT, saltAt, panX, TALLY, nearbySpinifex, addSpinifex, track, RESERVED, TOWERS, inCanyon } from './land.js';
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _fwd = new THREE.Vector3();
@@ -245,13 +246,16 @@ function buildBoar(x, z, ridge = false) {
   const g = new THREE.Group(); G.scene.add(g);
   const add = (geo, mat, px, py, pz, sx = 1, sy = sx, sz = sx, rx = 0) => { const m = mesh(geo, mat); m.position.set(px, py, pz); m.scale.set(sx, sy, sz); m.rotation.x = rx; g.add(m); return m; };
   const S1 = new THREE.SphereGeometry(1, 12, 10);
-  add(S1, M.boarHide, 0, 0.62, 0, 0.42, 0.42, 0.8);
+  const body = add(S1, M.boarHide, 0, 0.62, 0, 0.42, 0.42, 0.8);
   add(new THREE.ConeGeometry(0.26, 0.6, 10), M.boarHide, 0, 0.58, 0.95, 1, 1, 1, Math.PI / 2);
+  const ears = [-1, 1].map((s) => { const e = add(new THREE.ConeGeometry(0.07, 0.17, 5), M.boarHide, s * 0.2, 0.93, 0.6); e.rotation.z = -s * 0.5; return e; });
+  const tailG = new THREE.CylinderGeometry(0.01, 0.024, 0.32, 5); tailG.translate(0, -0.16, 0);
+  const tail = add(tailG, M.boarHide, 0, 0.8, -0.76); tail.rotation.x = 0.5;
   for (const s of [-1, 1]) { add(new THREE.ConeGeometry(0.03, 0.18, 5), M.bone, s * 0.12, 0.5, 1.12, 1, 1, 1, -0.6); }
   const legs = [];
   for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) legs.push(add(new THREE.CylinderGeometry(0.06, 0.05, 0.45, 6), M.boarHide, sx * 0.24, 0.24, sz * 0.48));
   for (let k = 0; k < 9; k++) { const b = add(new THREE.BoxGeometry(0.015, 0.22 + Math.sin(k / 8 * Math.PI) * 0.18, 0.12), M.iron, 0, 1.0 + Math.sin(k / 8 * Math.PI) * 0.05, -0.55 + k * 0.14); b.rotation.x = -0.4; }   // the razor ridge
-  const b = { g, legs, x, z, yaw: Math.random() * TAU, state: 'root', t: Math.random() * 10, ridge, dead: false, flee: 0 };
+  const b = { g, legs, body, ears, tail, x, z, yaw: Math.random() * TAU, state: 'root', t: Math.random() * 10, ridge, dead: false, flee: 0, watch: 0, watchCool: Math.random() * 6 };
   g.position.set(x, h(x, z), z);
   return b;
 }
@@ -263,8 +267,8 @@ function buildDevil(x, z) {
   for (let k = 0; k < 18; k++) { const a = k * 2.39996, r = 0.05 + (k % 3) * 0.02; spikes.push([new THREE.ConeGeometry(0.012, 0.05, 4), MX(Math.cos(a) * r, 0.11, Math.sin(a) * r * 1.2)]); }
   g.add(mesh(merge(spikes), M.devil));
   const tail = mesh(new THREE.ConeGeometry(0.03, 0.25, 6), M.devil); tail.position.set(0, 0.05, -0.24); tail.rotation.x = -Math.PI / 2; g.add(tail);
-  const d = { g, head, x, z, t: Math.random() * 10, puff: 0 };
-  addThing({ id: 'devil' + Math.round(x * 10 + z), name: 'Thorny-Devil', verb: 'Look', x, y: y + 0.15, z, r: 1.2, prov: ['P', FARM], use: () => { meet('devil'); d.puff = 2; bark(['A thorny-devil, sunning itself. Anything thrown at him goes straight back where it came from.', 'He’s puffed himself up at me. Fair enough. I’m bigger.', 'Prickles has cousins out here. Every one of them with the same opinion of me.'][Math.floor(Math.random() * 3)], ['P', FARM]); } });
+  const d = { g, head, x, z, home: { x, z }, yaw: g.rotation.y, t: Math.random() * 10, puff: 0, walkIn: 6 + Math.random() * 18, to: null, thing: null };
+  d.thing = addThing({ id: 'devil' + Math.round(x * 10 + z), name: 'Thorny-Devil', verb: 'Look', x, y: y + 0.15, z, r: 1.2, prov: ['P', FARM], use: () => { meet('devil'); d.puff = 2; bark(['A thorny-devil, sunning itself. Anything thrown at him goes straight back where it came from.', 'He’s puffed himself up at me. Fair enough. I’m bigger.', 'Prickles has cousins out here. Every one of them with the same opinion of me.'][Math.floor(Math.random() * 3)], ['P', FARM]); } });
   return d;
 }
 function buildJawJaw(x, z) {
@@ -394,6 +398,7 @@ export function updateLife(dt) {
   updateBoars(dt, x, z);
   updateDevils(dt, x, z);
   updateJaws(dt);
+  hearNoises();
   updateSwarm(dt, x, z, foot);
   updateHaze(dt, x, z);
 }
@@ -480,7 +485,8 @@ function updateStalkers(dt, x, z, foot) {
     s.head.lookAt(cam.position);
     if (s.state === 'perched') {
       s.g.position.lerp(s.home, clamp(dt * 2, 0, 1));
-      for (const e of s.ears) e.rotation.z = 0;
+      s.t2 = (s.t2 || 0) + dt; s.ears.forEach((e, k) => { e.rotation.z = Math.max(0, Math.sin(s.t2 * 0.9 + k * 2.6 + s.home.z) - 0.93) * 9 * (k ? 1 : -1); });   // an ear flicks; nothing else moves
+      s.g.scale.y = 1 + Math.sin(s.t2 * 1.5) * 0.015;
       if (!foot) continue;
       if (d < 18 && !s.warned) { s.warned = true; hooks.sfx.click(); meet('stalker'); bark('Clicking. Up in the rocks. Look up, Jacob.', ['X', 'the tell: ' + NEW]); }
       if (d < 18 && Math.random() < dt * 0.4) hooks.sfx.click();
@@ -585,21 +591,54 @@ function stride(st, dt, x, z, foot, speed, hunting) {
   }
 }
 
+const turnTo = (from, to, k) => from + Math.atan2(Math.sin(to - from), Math.cos(to - from)) * k;
+function scare(b, fromX, fromZ, secs = 4) {
+  if (b.dead || b.state === 'bolt') return;
+  if (b.state !== 'flee') hooks.sfx.squeal(spot(b.x, b.z, 30));
+  b.state = 'flee'; b.flee = secs; b.yaw = Math.atan2(b.x - fromX, b.z - fromZ);
+}
+// a noise somewhere (a stone landing, something struck: props.js): what's near enough to hear it reacts
+function hearNoises() {
+  const list = W.noises; if (!list || !list.length) return;
+  for (const n of list) {
+    for (const b of boars) if (!b.dead && Math.hypot(b.x - n.x, b.z - n.z) < n.r * 1.6) scare(b, n.x, n.z, 3.5);
+    for (const j of jaws) if (Math.hypot(j.x - n.x, j.z - n.z) < n.r) { const a = Math.atan2(j.x - n.x, j.z - n.z); j.target = { x: j.x + Math.sin(a) * 9, z: j.z + Math.cos(a) * 9 }; j.fright = 2.5; hooks.sfx.skitter(spot(j.x, j.z, 10)); }
+    for (const d of devils) if (Math.hypot(d.x - n.x, d.z - n.z) < 2.5) d.puff = 2;
+    for (const s of W.stalkers) if (n.hit === s && s.state === 'perched') { s.state = 'cowed'; s.cool = 30; hooks.sfx.hiss(spot(s.home.x, s.home.z, 20)); }
+  }
+  list.length = 0;
+}
 function updateBoars(dt, x, z) {
   for (const b of boars) {
     if (b.dead) continue;
-    b.t += dt;
-    const d = Math.hypot(b.x - x, b.z - z);
-    if (b.state !== 'bolt' && d < (S.inTractor ? 30 : 20)) { b.state = 'flee'; b.flee = 4; b.yaw = Math.atan2(b.x - x, b.z - z); }
-    let sp = 0;
-    if (b.state === 'bolt') { sp = 7; b.yaw = 0; b.flee -= dt; if (b.flee <= 0) b.state = 'root'; }
-    else if (b.state === 'flee') { sp = 6; b.flee -= dt; if (b.flee <= 0) b.state = 'root'; }
-    else { if (Math.sin(b.t * 0.3) > 0.6) { sp = 0.6; b.yaw += Math.sin(b.t * 0.7) * dt * 0.6; } }
+    b.t += dt; b.watchCool = Math.max(0, b.watchCool - dt);
+    const d = Math.hypot(b.x - x, b.z - z), fleeD = S.inTractor ? 30 : 20;
+    if (b.state !== 'bolt' && d < fleeD) scare(b, x, z);
+    else if (b.state === 'root' && d < fleeD + 20 && b.watchCool <= 0) { b.state = 'watch'; b.watch = 1.5 + Math.random() * 2.5; }
+    let sp = 0, nose = 0.12;
+    if (b.state === 'bolt') { sp = 7; b.yaw = 0; b.flee -= dt; if (b.flee <= 0) b.state = 'root'; nose = 0; }
+    else if (b.state === 'flee') { sp = 6; b.flee -= dt; if (b.flee <= 0) b.state = 'root'; nose = 0; }
+    else if (b.state === 'watch') {
+      // it has noticed him: head up, ears forward, square on, deciding
+      b.yaw = turnTo(b.yaw, Math.atan2(x - b.x, z - b.z), clamp(dt * 3, 0, 1)); nose = -0.1;
+      if ((b.watch -= dt) <= 0) { b.state = 'root'; b.watchCool = 7 + Math.random() * 8; }
+    } else {
+      if (Math.sin(b.t * 0.3) > 0.6) { sp = 0.6; b.yaw += Math.sin(b.t * 0.7) * dt * 0.6; }
+      nose = Math.sin(b.t * 2) * 0.06 + 0.12;                         // rooting, nose down
+      if (d < 70 && sp === 0) {
+        if (Math.random() < dt * 0.6) dustKick(b.x + Math.sin(b.yaw) * 1.1, b.z + Math.cos(b.yaw) * 1.1, 1, { size: 0.22, spread: 0.5, up: 0.4, alpha: 0.18 });
+        if (Math.random() < dt * 0.14) hooks.sfx.grunt(spot(b.x, b.z, 16));
+      }
+    }
     const nx = b.x + Math.sin(b.yaw) * sp * dt, nz = b.z + Math.cos(b.yaw) * sp * dt;
     if (!b.ridge || Math.abs(nx - ridgeX(nz)) < 30) { b.x = nx; b.z = nz; }
     b.g.position.set(b.x, h(b.x, b.z), b.z); b.g.rotation.y = b.yaw;
-    b.g.rotation.x = sp < 1 ? Math.sin(b.t * 2) * 0.06 + 0.12 : 0;      // rooting, nose down
+    b.g.rotation.x += (nose - b.g.rotation.x) * clamp(dt * 5, 0, 1);
     b.legs.forEach((l, k) => { l.rotation.x = Math.sin(b.t * (sp > 1 ? 16 : 5) + (k % 2 ? Math.PI : 0)) * (sp > 0 ? 0.5 : 0); });
+    // breathing, an ear that flicks at the flies, a tail that never stops
+    b.body.scale.y = 0.42 * (1 + Math.sin(b.t * (sp > 1 ? 7 : 1.9)) * 0.022);
+    b.ears.forEach((e, k) => { e.rotation.x = b.state === 'watch' ? 0.35 : Math.max(0, Math.sin(b.t * 1.3 + k * 2.1) - 0.9) * 6; });
+    b.tail.rotation.z = Math.sin(b.t * (sp > 1 ? 14 : 5.5)) * (sp > 1 ? 0.3 : 0.6); b.tail.rotation.x = sp > 1 ? 1.5 : 0.5;
   }
 }
 function updateDevils(dt, x, z) {
@@ -607,7 +646,21 @@ function updateDevils(dt, x, z) {
     d.t += dt;
     d.head.position.y = 0.08 + Math.max(0, Math.sin(d.t * 3)) * 0.02 * (Math.sin(d.t * 0.5) > 0 ? 1 : 0);   // the little push-ups they do
     if (d.puff > 0) { d.puff -= dt; d.g.scale.setScalar(1 + Math.min(1, d.puff) * 0.35); } else d.g.scale.setScalar(1);
-    if (Math.hypot(d.x - x, d.z - z) < 2.5 && d.puff <= 0) d.puff = 1.5;
+    const dj = Math.hypot(d.x - x, d.z - z);
+    if (dj < 2.5 && d.puff <= 0) d.puff = 1.5;
+    if (dj > 90) continue;
+    if (dj < 9) {
+      // someone's close: it stops where it is and comes round, slowly, to keep him in front of it
+      d.to = null; d.yaw = turnTo(d.yaw, Math.atan2(x - d.x, z - d.z), clamp(dt * 1.2, 0, 1)); d.g.rotation.z = 0;
+    } else if (d.to) {
+      // the walk: a few steps, rocking back and forth as if the ground might not hold
+      const dx = d.to.x - d.x, dz = d.to.z - d.z, L = Math.hypot(dx, dz);
+      if (L < 0.06) { d.to = null; d.walkIn = 8 + Math.random() * 22; d.g.rotation.z = 0; }
+      else { const step = Math.max(0, Math.sin(d.t * 9)) * 0.42 * dt; d.x += dx / L * step; d.z += dz / L * step; d.yaw = turnTo(d.yaw, Math.atan2(dx, dz), clamp(dt * 3, 0, 1)); d.g.rotation.z = Math.sin(d.t * 9) * 0.1; }
+    } else if ((d.walkIn -= dt) <= 0) { const a = Math.random() * TAU, r = 0.4 + Math.random() * 0.9; d.to = { x: d.home.x + Math.cos(a) * r, z: d.home.z + Math.sin(a) * r }; }
+    const y = h(d.x, d.z);
+    d.g.position.set(d.x, y, d.z); d.g.rotation.y = d.yaw;
+    d.thing.x = d.x; d.thing.z = d.z; d.thing.y = y + 0.15;
   }
 }
 // jaw-jaws scuttle between hiding places, and go for the tractor's wiring if it sits still too long
@@ -628,8 +681,13 @@ function updateJaws(dt) {
     if (j.target) {
       const dx = j.target.x - j.x, dz = j.target.z - j.z, L = Math.hypot(dx, dz);
       if (L < 0.6) { if (j.target.wiring && !S.inTractor) { tr.wired = (tr.wired || 0) + 1; j.home = { x: tr.x + 6, z: tr.z }; if (!S.flags.wiring) { S.flags.wiring = true; meet('jaws'); bark('Oi! Get off my ignition wiring!', ['P', FARM]); } } j.target = null; }
-      else { j.yaw = Math.atan2(dx, dz); j.x += dx / L * dt * 2.2; j.z += dz / L * dt * 2.2; j.legs.forEach((l, k) => { l.rotation.x = Math.sin(j.t * 30 + k) * 0.5; }); }
+      else { const v = (j.fright > 0 ? 4.6 : 2.2); j.yaw = Math.atan2(dx, dz); j.x += dx / L * dt * v; j.z += dz / L * dt * v; j.legs.forEach((l, k) => { l.rotation.x = Math.sin(j.t * (j.fright > 0 ? 46 : 30) + k) * 0.5; }); }
+    } else if (dp < 60) {
+      // nothing to run to: it worries at whatever it's standing on, and now and then a strand of wire parts with a spark
+      j.g.rotation.x = Math.sin(j.t * 11) * 0.07; j.legs.forEach((l, k) => { l.rotation.x = Math.sin(j.t * 6 + k * 1.3) * 0.12; });
+      if (Math.random() < dt * 0.09) { sparkBurst(j.x + Math.sin(j.yaw) * 0.3, h(j.x, j.z) + 0.06, j.z + Math.cos(j.yaw) * 0.3, 3, { colour: [1, 0.75, 0.4], speed: 1.2, life: 0.25 }); hooks.sfx.tink(spot(j.x, j.z, 7)); }
     }
+    j.fright = Math.max(0, (j.fright || 0) - dt); if (j.target) j.g.rotation.x = 0;
     j.g.position.set(j.x, h(j.x, j.z), j.z); j.g.rotation.y = j.yaw;
   }
 }

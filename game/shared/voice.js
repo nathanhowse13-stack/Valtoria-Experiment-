@@ -56,7 +56,8 @@ export function stopVoice() {
   if (voice.cur) { voice.cur = null; try { speechSynthesis.cancel(); } catch (e) { /* nothing to stop */ } }
   if (voice.duck) voice.duck(false);
 }
-// role: 'jacob' (his thoughts), 'book' (the Book of Lost Echoes), 'whisper' (the flies), 'radio' (a voice out of the tractor's set, on the road)
+// role: 'jacob' (his thoughts), 'book' (the Book of Lost Echoes), 'whisper' (the flies), 'radio' (a voice out of the tractor's set, on the road),
+// 'ironshell' (the guard at the gate of Bleak Flats)
 export function speak(text, role = 'jacob', { muted = false, onEnd = null } = {}) {
   if (!voice.ok || !voice.settings.on || muted) return false;
   const say = speakable(text);
@@ -69,6 +70,7 @@ export function speak(text, role = 'jacob', { muted = false, onEnd = null } = {}
   if (role === 'book') { u.rate = natural ? 0.94 : 0.9; u.pitch = 1.0; u.volume = voice.settings.vol * 0.9; }
   else if (role === 'whisper') { u.rate = 0.82; u.pitch = 0.55; u.volume = voice.settings.vol * 0.32; }
   else if (role === 'radio') { u.rate = 1.06; u.pitch = 1.12; u.volume = voice.settings.vol * 0.5; }
+  else if (role === 'ironshell') { u.rate = 0.8; u.pitch = 0.1; u.volume = voice.settings.vol * 0.9; }     // gravel down a metal chute (Chapter Two)
   else { u.rate = natural ? 1.02 : 0.98; u.pitch = natural ? 0.94 : 0.86; u.volume = voice.settings.vol; }
   const finish = () => {
     if (token !== voice.token) return;

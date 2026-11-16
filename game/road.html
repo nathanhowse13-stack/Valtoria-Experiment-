@@ -93,6 +93,13 @@ body:not(.workshop) .ws { display: none !important; }
 #book { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); width: min(34rem, 86vw); padding: 14px 20px; text-align: center; background: rgba(24, 16, 10, 0.82); border: 1px solid var(--line); border-radius: 6px; opacity: 0; transition: opacity 0.8s; }
 #book.on { opacity: 1; }
 #book p { margin: 0 0 6px; font: italic 19px/1.45 var(--book); color: #f6ead4; }
+#choice { position: absolute; left: 50%; bottom: max(170px, 26vh); transform: translateX(-50%); width: min(30rem, 88vw); padding: 12px 16px 14px; pointer-events: auto; }
+#choice .ck { font: 600 11px/1 var(--ui); letter-spacing: 0.22em; text-transform: uppercase; color: var(--rust); }
+#choice p { margin: 6px 0 10px; font: italic 17px/1.35 var(--book); color: var(--ink); }
+#choice .actions { display: grid; gap: 6px; }
+#choice .btn { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 8px 12px; }
+#choice .btn small { color: var(--ink-faint); font-size: 12px; }
+#choice .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 #toasts { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); display: grid; gap: 6px; width: min(26rem, 90vw); }
 .toast { margin: 0; padding: 7px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--dawn); border-radius: 4px; font-size: 13.5px; transition: opacity 0.5s; }
 .toast.out { opacity: 0; }
@@ -160,6 +167,7 @@ body:not(.workshop) .ws { display: none !important; }
   <div id="clock" class="panel"><b id="time">6:20am</b><div id="heat">41 °C · haze</div></div>
   <div id="reticle"></div>
   <div id="prompt" class="panel" hidden><kbd id="prompt-key">E</kbd><span class="verb" id="prompt-verb"></span><span class="name" id="prompt-name"></span><span class="ws" id="prompt-tag"></span></div>
+  <div id="choice" class="panel" hidden></div>
   <div id="whisper"></div>
   <div id="book" aria-live="polite"></div>
   <div id="thought"></div>

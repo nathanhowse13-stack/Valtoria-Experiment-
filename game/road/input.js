@@ -71,6 +71,8 @@ export function bindInput(h) {
   document.addEventListener('pointerlockchange', () => { input.locked = document.pointerLockElement === canvas; document.body.classList.toggle('locked', input.locked); });
   document.addEventListener('pointerlockerror', () => { input.lockFailed = true; });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  // the wheel pulls the chase camera in and out
+  canvas.addEventListener('wheel', (e) => { if (!h.onZoom || !h.started() || h.paused()) return; e.preventDefault(); h.onZoom(Math.sign(e.deltaY)); }, { passive: false });
   canvas.addEventListener('pointerdown', (e) => {
     h.onAnyInput(); setMode('kbm');
     if (!h.started() || h.paused()) return;

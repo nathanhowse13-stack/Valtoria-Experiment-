@@ -630,36 +630,19 @@ function buildBleakFlats() {
     if (Math.abs(a) < 0.03) continue;                                                            // the gate
     const x = cx + Math.sin(a) * rad, z = cz - Math.cos(a) * rad, y = h(x, z) - 0.5, ht = 8 + 2.5 * Math.sin(a * 23) + (Math.sin(a * 61) > 0.6 ? 2 : 0), w = rad * 0.036;
     plates.push([new THREE.BoxGeometry(w, ht, 0.2), MX(x, y + ht / 2, z, 0, -a, Math.sin(a * 37) * 0.04)]);
+    blockers.push({ x, z, r: w * 0.62 });                                                       // nothing goes through the wall
     if (Math.sin(a * 13) > 0.3) parts.push([new THREE.BoxGeometry(0.35, ht + 1, 0.35), MX(x, y + ht / 2, z + 0.4, 0, -a)]);
     for (let k = 0; k < 2; k++) spikes.push([new THREE.ConeGeometry(0.09, 1.4, 4), MX(x + (k - 0.5) * w * 0.5 * Math.cos(a), y + ht + 0.6, z + (k - 0.5) * w * 0.5 * Math.sin(a), 0, 0, (k - 0.5) * 0.4)]);
     if (Math.floor(a * 100) % 3 === 0) parts.push([new THREE.TorusGeometry(0.45, 0.025, 4, 10), MX(x, y + ht + 0.35, z, 0, -a + Math.PI / 2, 0)]);   // barbed wire, coiled along the top
   }
   G.scene.add(mesh(planarUV(merge(plates), 1.2), M.corr)); G.scene.add(mesh(merge(parts), M.rust)); G.scene.add(mesh(merge(spikes), M.iron));
-  // the gate: two iron towers and a slab of ship plating, hauled up on pistons
+  // the gate: two iron towers and the lintel between them. The slab of ship plating that goes up and down on the
+  // pistons, the booth, its Ironshell and the queue are gate.js's, because they move.
   const gx = GATE.x, gz = GATE.z, gy = h(gx, gz);
   const gate = [];
-  for (const s of [-1, 1]) gate.push([new THREE.BoxGeometry(2.2, 13, 2.2), MX(gx + s * 5.2, gy + 6.5, gz)], [new THREE.CylinderGeometry(0.18, 0.18, 6, 8), MX(gx + s * 3.8, gy + 8, gz - 0.6)]);
-  gate.push([new THREE.BoxGeometry(8.2, 5.5, 0.6), MX(gx, gy + 10, gz)], [new THREE.BoxGeometry(10.6, 0.8, 2.4), MX(gx, gy + 13.2, gz)]);
+  for (const s of [-1, 1]) { gate.push([new THREE.BoxGeometry(2.2, 13, 2.2), MX(gx + s * 5.2, gy + 6.5, gz)], [new THREE.CylinderGeometry(0.18, 0.18, 6, 8), MX(gx + s * 3.8, gy + 8, gz - 0.6)]); blockers.push({ x0: gx + s * 5.2 - 1.1, z0: gz - 1.1, x1: gx + s * 5.2 + 1.1, z1: gz + 1.1 }); }
+  gate.push([new THREE.BoxGeometry(10.6, 0.8, 2.4), MX(gx, gy + 13.2, gz)]);
   G.scene.add(mesh(planarUV(merge(gate), 1.5), M.iron));
-  // the booth and its Ironshell
-  const booth = [[new THREE.BoxGeometry(2, 2.6, 2), MX(gx + 7.5, gy + 1.3, gz - 4)], [new THREE.BoxGeometry(2.4, 0.15, 2.4), MX(gx + 7.5, gy + 2.7, gz - 4)]];
-  G.scene.add(mesh(planarUV(merge(booth), 1), M.corr));
-  const shell = new THREE.Group(); shell.position.set(gx + 6.1, gy, gz - 4.2); G.scene.add(shell);
-  const sp = (geo, mat, x, y, z, sx = 1, sy = sx, sz = sx) => { const m = mesh(geo, mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz); shell.add(m); };
-  sp(new THREE.BoxGeometry(0.9, 1.1, 0.6), M.ironshell, 0, 1.55, 0); sp(new THREE.BoxGeometry(0.6, 0.55, 0.55), M.ironshell, 0, 2.4, 0); sp(new THREE.BoxGeometry(0.42, 0.05, 0.02), M.slit, 0, 2.45, -0.28);
-  for (const s of [-1, 1]) { sp(new THREE.BoxGeometry(0.3, 0.9, 0.3), M.ironshell, s * 0.25, 0.45, 0); sp(new THREE.BoxGeometry(0.28, 0.9, 0.28), M.ironshell, s * 0.62, 1.5, 0); }
-  // the queue: steam-belching transport trucks and the dusty and weary on foot
-  const truck = (x, z, tone) => {
-    const tg = [];
-    tg.push([new THREE.BoxGeometry(2.4, 2.2, 3.2), MX(x, h(x, z) + 1.8, z + 2.2)], [new THREE.BoxGeometry(2.6, 2.6, 5), MX(x, h(x, z) + 2, z - 2)], [new THREE.CylinderGeometry(0.7, 0.7, 2.4, 14), MX(x, h(x, z) + 1.6, z + 4.4, Math.PI / 2, 0, 0)]);
-    for (const s of [-1, 1]) for (const zz of [3.2, -0.5, -3.4]) tg.push([new THREE.CylinderGeometry(0.6, 0.6, 0.45, 12), MX(x + s * 1.3, h(x, z) + 0.6, z + zz, 0, 0, Math.PI / 2)]);
-    G.scene.add(mesh(planarUV(merge(tg), 1), tone));
-    W.smoke.push({ x, y: h(x, z) + 4, z: z + 4.4, rate: 0.6, mat: M.smoke, size: 0.6 });
-  };
-  truck(1.2, 1812, M.paint); truck(-1, 1798, M.rust);
-  const folk = [];
-  for (const [x, z] of [[3.6, 1822], [4.4, 1824.5], [-3.2, 1806], [3.2, 1792]]) folk.push([new THREE.CapsuleGeometry(0.28, 1.1, 4, 8), MX(x, h(x, z) + 0.85, z)], [new THREE.SphereGeometry(0.2, 8, 6), MX(x, h(x, z) + 1.75, z)]);
-  G.scene.add(mesh(merge(folk), M.rag));
   // beyond the wall: leaning towers of scrap, and the refinery stacks
   const towers = [];
   const R = rng(55);
@@ -671,5 +654,5 @@ function buildBleakFlats() {
     W.smoke.push({ x, y: h(x, z) + ht + 1, z, rate: 1.4, mat: M.yellowSmoke, size: 2.4 });
   }
   G.scene.add(mesh(merge(stacks), M.rust));
-  addThing({ id: 'gate', name: 'The south gate', verb: 'Look', x: gx, y: gy + 2, z: gz - 6, r: 5, prov: ['C', CH2], use: () => hooks.bark('The gates of Bleak Flats don’t open for free. Five bits, or three ounces of raw water.', ['C', CH2]) });
+  addThing({ id: 'gate', name: 'The south gate', verb: 'Look', x: gx, y: gy + 2, z: gz - 1.2, r: 3, prov: ['C', CH2], use: () => hooks.bark('The gates of Bleak Flats don’t open for free. Five bits, or three ounces of raw water.', ['C', CH2]) });
 }

@@ -148,7 +148,15 @@ export function buildTractor(THREE, { maxAniso = 8 } = {}) {
   box(M.leather[1], -0.26, 1.58, -0.85, 0.26, 1.95, -0.78, -0.12, 0, 0);
   box(M.canvas, -0.08, 1.601, -0.7, 0.12, 1.605, -0.5, 0, 0.3, 0);         // tape over the split
   rod(M.iron, [0, 1.15, 0.25], [0, 1.72, -0.12], 0.025);                   // steering column
-  put(M.black, new THREE.TorusGeometry(0.2, 0.018, 6, 20), MX(0, 1.74, -0.14, 1.15, 0, 0));
+  // the steering wheel turns, so it is its own piece on the end of the column: a rim, three spokes, a hub
+  const steering = new THREE.Group(); steering.position.set(0, 1.74, -0.14); steering.rotation.x = 1.15; group.add(steering);
+  const steerWheel = new THREE.Group(); steering.add(steerWheel);
+  {
+    const piece = (geo, mat) => { const o = new THREE.Mesh(geo, mat); o.castShadow = true; steerWheel.add(o); return o; };
+    piece(new THREE.TorusGeometry(0.2, 0.018, 6, 22), M.black);
+    for (let k = 0; k < 3; k++) { const a = k * Math.PI * 2 / 3, sp = piece(new THREE.CylinderGeometry(0.009, 0.011, 0.2, 5), M.iron); sp.rotation.z = a; sp.position.set(-Math.sin(a) * 0.1, Math.cos(a) * 0.1, 0); }
+    piece(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 10).rotateX(Math.PI / 2), M.iron);
+  }
   for (const [x, a] of [[0.22, 0.3], [0.3, -0.2]]) rod(M.iron, [x, 1.15, -0.2], [x + 0.05, 1.55, -0.2 + a * 0.3], 0.012);   // levers
   put(M.black, new THREE.SphereGeometry(0.03, 8, 6), MX(0.27, 1.55, -0.11)); put(M.black, new THREE.SphereGeometry(0.03, 8, 6), MX(0.35, 1.55, -0.26));
 
@@ -201,6 +209,7 @@ export function buildTractor(THREE, { maxAniso = 8 } = {}) {
     }
     if (kind === 'banded') for (const s of [-0.2, 0.2]) add(M.iron, new THREE.TorusGeometry(r * 0.97, 0.015, 4, 32), MX(s * w, 0, 0, 0, Math.PI / 2, 0));   // a steel band where the leather gave out
     build(g, P, 0.4);
+    g.rotation.order = 'YXZ';                 // the front pair turn with the steering as well as roll
     wheels.push({ g, r, front: z > 0 });
   };
   wheel(-0.98, -0.7, 0.82, 0.44, 'banded');
@@ -298,15 +307,18 @@ export function buildTractor(THREE, { maxAniso = 8 } = {}) {
 
   const t = {
     group, wheels, milk, load, canister, antenna, stackTip, lid, materials: M,
+    // where the driver's hands go: the wheel's centre, its tilt and radius in the tractor's own frame, and how far it has turned
+    wheelAt: { x: 0, y: 1.74, z: -0.14, tilt: 1.15, r: 0.2, turn: 0 },
     running: false,
     setLid(open) { lidWant = open ? 1 : 0; },
     // a burst from the stack: on start, and when the throttle opens
     spit(n = 24) { spit += n; },
     // Sulphur-Salts: the stack chokes out yellow for a few seconds
     sulphur(sec = 4) { sulph = sec; spit += 60; },
-    update(dt, { running = t.running, throttle = 0, speed = 0 } = {}) {
+    update(dt, { running = t.running, throttle = 0, speed = 0, steer = 0 } = {}) {
       if (!attached && group.parent) { group.parent.add(sparks, smoke, yellow); attached = true; }
-      for (const w of wheels) w.g.rotation.x += speed * dt / w.r;
+      for (const w of wheels) { w.g.rotation.x += speed * dt / w.r; if (w.front) w.g.rotation.y = steer * 0.5; }
+      t.wheelAt.turn = -steer * 1.9; steerWheel.rotation.z = t.wheelAt.turn;       // left is anticlockwise, from where he sits
       // the whip sways with the ground and with every change of speed
       const accel = (speed - lastSpeed) / Math.max(dt, 1e-3); lastSpeed = speed;
       swayV += (-sway * 40 - swayV * 3 - accel * 0.05 + (running ? Math.sin(performance.now() * 0.03) * 0.4 : 0)) * dt; sway += swayV * dt;

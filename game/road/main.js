@@ -34,6 +34,8 @@ import { reserveProps, buildProps, updateProps, primaryAction, canThrow, propSta
 import { HANDS, buildHands, playHand, updateHands } from './hands.js';
 import { buildFar, updateFar } from './far.js';
 import { buildRooms, updateRooms } from './rooms.js';
+import { buildDriver } from './driver.js';
+import { buildGate, updateGate, gatePose, GS } from './gate.js';
 import { audio, initAudio, sfx, updateAudio, setMuted } from './sound.js';
 import { input, bindInput, pollInput, takeLook, saveSettings, rumble, navFocus, releaseLock } from './input.js';
 import { buildJacob } from './jacob.js';
@@ -68,7 +70,7 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0xd2a07e, 0.0021);
 const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 6000);          // far enough for the outer ranges, 3 km past the land (far.js)
 camera.rotation.order = 'YXZ';
-const view = { baseFov: 60, camYaw: 0, camPos: new THREE.Vector3(), eyeY: 0, lookIdle: 0, lastX: 0, lastZ: 0, chunkFar: 560 };
+const view = { baseFov: 60, camYaw: 0, camPos: new THREE.Vector3(), eyeY: 0, lookIdle: 0, lastX: 0, lastZ: 0, chunkFar: 560, chase: 8.2, chaseNow: 8.2 };
 const hemi = new THREE.HemisphereLight(0xb8c0d8, 0x8a4426, 0.5);   // the sky's blue and the dirt's red bounce: shade out here is never black
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffe0b4, 3.2);
@@ -139,7 +141,7 @@ S.visited = {};
 
 // ---------- the HUD ----------
 const ui = {};
-for (const id of ['hud', 'title', 'btn-start', 'btn-yard', 'btn-ws', 'place', 'track-fill', 'km', 'compass', 'compass-strip', 'compass-note', 'time', 'heat', 'reticle', 'prompt', 'prompt-key', 'prompt-verb', 'prompt-name', 'prompt-tag', 'whisper', 'thought', 'book', 'toasts', 'mode', 'status', 'gauges', 'menu', 'menu-body', 'menu-close', 'jot', 'jot-thumb', 'jot-ctx', 'jot-kinds', 'jot-text', 'jot-where', 'jot-cancel', 'jot-save', 'end', 'end-card', 'fx-fade', 'fade-line', 'fx-dark', 'fx-glare', 'fx-hurt', 'fx-bleed', 'fx-stress', 'fx-haze', 'fx-swirl', 'pad-note']) ui[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = $(id);
+for (const id of ['hud', 'title', 'btn-start', 'btn-yard', 'btn-ws', 'place', 'track-fill', 'km', 'compass', 'compass-strip', 'compass-note', 'time', 'heat', 'reticle', 'prompt', 'prompt-key', 'prompt-verb', 'prompt-name', 'prompt-tag', 'whisper', 'thought', 'book', 'toasts', 'mode', 'status', 'gauges', 'menu', 'menu-body', 'menu-close', 'jot', 'jot-thumb', 'jot-ctx', 'jot-kinds', 'jot-text', 'jot-where', 'jot-cancel', 'jot-save', 'end', 'end-card', 'fx-fade', 'fade-line', 'fx-dark', 'fx-glare', 'fx-hurt', 'fx-bleed', 'fx-stress', 'fx-haze', 'fx-swirl', 'pad-note', 'choice']) ui[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = $(id);
 const meters = { health: $('m-health'), water: $('m-water'), stress: $('m-stress') };
 const clockText = () => { const m = Math.floor(S.time / 60) % 1440, hh = Math.floor(m / 60), mm = m % 60; return `${hh % 12 || 12}:${String(mm).padStart(2, '0')}${hh < 12 ? 'am' : 'pm'}`; };
 const hours = () => (S.time / 3600) % 24;
@@ -303,10 +305,31 @@ function topUpCanister() {
   if (!canFill()) return S.can < CANISTER_MAX ? ' The canister’s on the tractor. Too far to lug it.' : '';
   S.can = CANISTER_MAX; return ' Canister’s full too.';
 }
+// somebody else speaking: the Ironshell at the gate (its words on screen where the radio's go, in its own voice)
+hooks.caption = (who, text, prov, role = 'radio', ms = 3600) => {
+  ui.whisper.innerHTML = `<span style="font-style:normal;color:#e8b0a4">${esc(who)} · </span>${esc(text)}<span class="tagline ws">${tagHTML(...prov)}</span>`;
+  ui.whisper.classList.add('on'); clearTimeout(whisperTimer); whisperTimer = setTimeout(() => ui.whisper.classList.remove('on'), ms);
+  speak(text, role, { muted: audio.muted });
+};
+// a choice put to him: a title, a line, and two or three things he can do about it (1, 2, 3 on the keys; A on a controller)
+let choiceDef = null;
+hooks.choice = (def) => {
+  choiceDef = def;
+  ui.choice.hidden = !def;
+  if (!def) { canvas.focus(); return; }
+  ui.choice.innerHTML = `<div class="ck">${esc(def.title)}<span class="ws"> ${tagHTML(...def.prov)}</span></div><p>${esc(def.note)}</p><div class="actions">` +
+    def.options.map((o, i) => `<button class="btn" data-pick="${i}" ${o.disabled ? 'disabled' : ''}><kbd>${i + 1}</kbd> ${esc(o.label)}<small>${esc(o.sub || '')}</small></button>`).join('') + '</div>';
+  releaseLock();
+  if (input.mode === 'pad') setTimeout(() => navFocus(ui.choice, 'down'), 0);
+};
+function pickChoice(i) { const d = choiceDef, o = d && d.options[i]; if (!o || o.disabled) return; hooks.choice(null); o.pick(); }
+ui.choice.addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (b) pickChoice(Number(b.dataset.pick)); });
+addEventListener('keydown', (e) => { if (choiceDef && /^Digit[1-9]$/.test(e.code) && ui.menu.hidden && ui.jot.hidden) pickChoice(Number(e.code.slice(5)) - 1); });
+hooks.arrive = () => { if (!S.flags.arrived) arrive(); };
 hooks.fillWater = (line, prov) => { S.sips = 4; const c = topUpCanister(); sfx.fill(); updateVitals(); bark(line + c, prov); };
 
 // ---------- the tractor: the shared model, and where it is ----------
-let tractor = null, jacob = null;
+let tractor = null, jacob = null, driver = null;
 function buildTractor() {
   const model = buildTractorModel(THREE, { maxAniso });
   scene.add(model.group);
@@ -671,8 +694,11 @@ function poseTractor(dt) {
     s.p = clamp(s.p + s.pv * dt, -0.08, 0.08); s.r = clamp(s.r + s.rv * dt, -0.08, 0.08); s.y = clamp(s.y + s.yv * dt, -0.06, 0.06);
   }
   const lean = -T.steer * clamp(sp / 6, 0, 1) * 0.035;
-  T.g.position.set(T.x, ty + s.y, T.z);
-  T.g.rotation.set(T.pitch + s.p, T.yaw, T.roll + s.r + lean, 'YXZ');
+  // two cylinders, so she doesn't hum, she shudders: slow and lumpy at idle, quicker and harder with the throttle open
+  if (dt > 0) T.beat = (T.beat || 0) + dt * Math.PI * 2 * (5.2 + T.thr * 8);
+  T.shudder = S.started && T.stall <= 0 ? (Math.sin(T.beat) + 0.4 * Math.sin(T.beat * 2.03 + 1)) * 0.0016 * (1 + T.thr * 0.8) : 0;
+  T.g.position.set(T.x, ty + s.y + T.shudder, T.z);
+  T.g.rotation.set(T.pitch + s.p, T.yaw, T.roll + s.r + lean + T.shudder * 0.5, 'YXZ');
 }
 
 // ---------- moving: Jacob on foot, and Jacob underground ----------
@@ -727,6 +753,16 @@ function look(dt) {
   P.pitch = clamp(P.pitch + ly, -1.3, 1.25);
 }
 
+// the boards of a house floor, where he's standing on one (a step up from the dirt outside)
+function floorAt(x, z) {
+  for (const f of W.floors || []) {
+    if (f.hw === undefined) continue;
+    const dx = x - f.x, dz = z - f.z; if (dx * dx + dz * dz > f.r * f.r) continue;
+    const c = Math.cos(f.yaw), s = Math.sin(f.yaw), lx = c * dx - s * dz, lz = s * dx + c * dz;
+    if (Math.abs(lx) < f.hw && Math.abs(lz) < f.hd) return f.y;
+  }
+  return null;
+}
 // ---------- the camera ----------
 const _n = new THREE.Vector3(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
 function placeCamera(dt) {
@@ -739,7 +775,7 @@ function placeCamera(dt) {
     if (S.view === 'seat') {
       // at the wheel: the cab's shake comes through, softened so it reads as the machine and not the camera
       _e.set(T.pitch + T.sus.p * 0.5, T.yaw, (T.roll + T.sus.r) * 0.6);
-      _n.set(-0.06, 2.26, -0.52).applyEuler(_e).add(T.g.position);
+      _n.set(-0.06, 2.26, -0.52).applyEuler(_e).add(T.g.position); if (!bobOn) _n.y -= T.shudder || 0;
       camera.position.copy(_n); camera.rotation.set(P.pitch + (bobOn ? T.sus.p * 0.5 : 0), T.yaw + P.look + Math.PI, bobOn ? (T.roll + T.sus.r) * 0.45 : 0);
       fovGoal += 6 + (bobOn ? sp * 0.5 : 0);
     } else {
@@ -747,10 +783,11 @@ function placeCamera(dt) {
       const jumped = Math.hypot(T.x - view.lastX, T.z - view.lastZ) > 6;
       const goal = T.yaw + P.look;
       view.camYaw = jumped ? goal : view.camYaw + angDiff(goal, view.camYaw) * damp(P.look ? 9 : 4.2, dt);
-      let back = 8.2 + sp * 0.22;
+      view.chaseNow += (view.chase - view.chaseNow) * damp(6, dt);                  // the mouse wheel sets how far back the camera rides
+      let back = view.chaseNow + sp * 0.22;
       const at = (b) => _n.set(T.x - Math.sin(view.camYaw) * b, 0, T.z - Math.cos(view.camYaw) * b);
       at(back); for (let i = 0; i < 6 && landBlocked(_n.x, _n.z, 0.8); i++) at(back *= 0.8);
-      _n.y = Math.max(h(_n.x, _n.z) + 1.2, ty + 3.5 - P.pitch * 4 + (8.2 - Math.min(back, 8.2)) * 0.25);
+      _n.y = Math.max(h(_n.x, _n.z) + 1.2, ty + 1.4 + view.chaseNow * 0.256 - P.pitch * (2 + view.chaseNow * 0.24) + Math.max(0, view.chaseNow - back) * 0.25);
       if (jumped) view.camPos.copy(_n); else { view.camPos.x = _n.x; view.camPos.z = _n.z; view.camPos.y += (_n.y - view.camPos.y) * damp(7, dt); }
       camera.position.copy(view.camPos);
       const ahead = 5 + sp * 0.5;
@@ -766,12 +803,17 @@ function placeCamera(dt) {
       const fl = caveFloor(cave, P.x, P.z), room = fl.ceil - fl.floor;      // stoop where the roof comes down
       P.crouch += ((room < 1.95 ? 1 : 0) - P.crouch) * damp(6, dt);
       gy = fl.floor; eye = Math.min(1.62, room - 0.3);
-    } else { gy = h(P.x, P.z); P.crouch += (0 - P.crouch) * damp(6, dt); }
+    } else { gy = floorAt(P.x, P.z) ?? h(P.x, P.z); P.crouch += (0 - P.crouch) * damp(6, dt); }
     const want = gy + eye;
     view.eyeY = Math.abs(view.eyeY - want) > 2 ? want : view.eyeY + (want - view.eyeY) * damp(cave ? 8 : 12, dt);
     const bobY = bobOn ? Math.sin(P.bob * 2) * (0.014 + 0.016 * P.run) * amt : 0, bobX = bobOn ? Math.sin(P.bob) * (0.008 + 0.01 * P.run) * amt : 0;
     camera.position.set(P.x - Math.cos(P.yaw) * bobX + (Math.random() - 0.5) * shake, view.eyeY + bobY + (Math.random() - 0.5) * shake, P.z + Math.sin(P.yaw) * bobX);
-    camera.rotation.set(P.pitch, P.yaw + Math.PI, bobOn ? Math.sin(P.bob) * 0.003 * amt : 0);
+    // standing still he still breathes; stepping sideways he leans into it
+    view.breath = (view.breath || 0) + dt * (1.5 + P.run * 2 + S.stress * 0.012);
+    const still = 1 - amt, side = (P.vx * -Math.cos(P.yaw) + P.vz * Math.sin(P.yaw)) / (SPEED.walk * SPEED.run);
+    view.lean = (view.lean || 0) + (clamp(side, -1, 1) * 0.022 - (view.lean || 0)) * damp(6, dt);
+    if (bobOn) camera.position.y += Math.sin(view.breath) * 0.004 * still;
+    camera.rotation.set(P.pitch + (bobOn ? Math.sin(view.breath) * 0.0016 * still : 0), P.yaw + Math.PI, bobOn ? Math.sin(P.bob) * 0.003 * amt - view.lean : 0);
     if (bobOn) fovGoal += 5 * P.run * Math.min(1, sp / (SPEED.walk * 1.5));
     jacob.setCrouch(P.crouch * 0.35);
     jacob.update(S.paused ? 0 : dt, P, P.yaw + Math.PI, { sprint: P.run > 0.5 && sp > SPEED.walk * 1.4, groundY: view.eyeY - eye });
@@ -781,7 +823,8 @@ function placeCamera(dt) {
   const throttle = S.inTractor && !S.paused ? T.thr * (G.redline > 0 ? 1.6 : 1) : 0;
   if (throttle > 0.4 && !T.wasThrottle) T.model.spit(30);       // opening the throttle coughs phosphor
   T.wasThrottle = throttle > 0.4;
-  T.model.update(S.paused ? 0 : dt, { running: S.started && T.stall <= 0, throttle, speed: T.speed });
+  T.model.update(S.paused ? 0 : dt, { running: S.started && T.stall <= 0, throttle, speed: T.speed, steer: T.steer });
+  driver.update(S.paused ? 0 : dt, { visible: S.inTractor, seat: S.inTractor && S.view === 'seat', steer: T.steer, speed: T.speed, thr: T.thr, brk: T.brk, look: P.look, pitch: P.pitch, sus: T.sus, gust: WIND.gust, rightBusy: HANDS.active, pose: gatePose() });
   T.g.updateMatrixWorld();
   for (const t of W.tractorThings || []) { const p = tractorPoint(...t.local); t.x = p.x; t.y = p.y; t.z = p.z; }
 }
@@ -857,8 +900,9 @@ function arrive() {
   const caves = Object.keys(S.visited).map(k => CAVES[k] && CAVES[k].def.name).filter(Boolean);
   ui.fxFade.classList.add('on');
   setTimeout(() => {
-    ui.endCard.innerHTML = `<div class="kicker">Bleak Flats</div><h1>The south gate, at ${esc(clockText())}.</h1>
-      <p class="lede">The gates of Bleak Flats do not open for free. An Ironshell in officious grey, going to rust, a vision slit glowing a dull crimson: “Scan.” Then: “Entry tax. Five bits. Or three ounces of raw water.” The price has gone up.<span class="ws"> ${tagHTML('C', CH2)}</span></p>
+    ui.endCard.innerHTML = `<div class="kicker">Bleak Flats</div><h1>Under the wall, at ${esc(clockText())}.</h1>
+      <p class="lede">The massive gate groaned, hydraulic pistons screaming as they lifted the multi-ton slab of ship plating. Jacob kicked the tractor forward, passing under the shadow of the wall and into the belly of the beast.<span class="ws"> ${tagHTML('C', CH2)}</span></p>
+      <p>${S.flags.paid === 'water' ? 'He paid the entry tax in raw water, three ounces of it, and kept his five bits.' : S.flags.paid === 'bits' ? 'He paid the entry tax with his last five bits.' : 'He went in under the wall.'}<span class="ws"> ${tagHTML('X', 'choosing how to pay: ' + NEW)}</span></p>
       <ul><li>Health ${Math.round(S.health)}, water ${Math.round(S.water)}, stress ${Math.round(S.stress)}.${S.hull ? ` The hull took ${S.hull} new scratch${S.hull === 1 ? '' : 'es'}.` : ''}</li>
       <li>${S.footKm > 0.05 ? `Walked ${(S.footKm * 1000).toFixed(0)} m of it.` : 'Never left the tractor.'}${caves.length ? ` Went into ${caves.join(', ')}.` : ''}</li>
       <li>${met.length ? 'Met: ' + met.join(', ') + '.' : 'Met nothing worth mentioning. Lucky.'}</li>
@@ -933,7 +977,8 @@ function loop(ts) {
   if (document.hidden) return;
   // the clock ticks unevenly even when the frames don't: ease the step so motion stays even
   dtS = Math.abs(raw - dtS) > 0.012 ? raw : dtS + (raw - dtS) * 0.25;
-  try { frame(dtS, raw); } catch (e) { if (!loop.failed) { loop.failed = true; console.error(e); } }
+  // (tests can run the world several steps to a drawn frame: window.__road.warp, with ?debug)
+  try { for (let n = DEBUG && window.__road && window.__road.warp || 1; n > 0; n--) frame(dtS, raw); } catch (e) { if (!loop.failed) { loop.failed = true; console.error(e); } }
   const cave = inCave();
   post.render(cave ? cave.scene : scene, camera, HANDS.scene, HANDS.camera, HANDS.active, raw);
   grabThumb();
@@ -946,10 +991,9 @@ function frame(dt, raw) {
   if (live) {
     S.time += dt * TIME_SCALE; G.time += dt;
     if (S.inTractor) driveTractor(dt); else walk(dt);
-    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); }
+    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); updateGate(dt); }
     updateProps(dt); updateRooms(dt);
     hazards(dt); survive(dt);
-    if (!inCave() && (S.inTractor ? tractor.z : P.z) > ARRIVE_Z && !S.flags.arrived) arrive();
     if (G.redline > 0) G.redline = Math.max(0, G.redline - dt);
   } else if (!S.started) { G.time += dt * 0.5; P.look = Math.sin(G.time * 0.22) * 0.5; view.camYaw = tractor.yaw + P.look; }
   SWAY.uTime.value = G.time;
@@ -1027,9 +1071,10 @@ async function boot() {
   tick('start'); buildAir(); buildLand(); buildFar(); tick('land'); buildLife(); tick('life');
   cullable(W.devils, 70); cullable(W.jaws, 90); cullable(W.boars, 260); buildMainRoad(); tick('main road'); buildCaves(); tick('caves');
   tractor = G.tractor = buildTractor(); addTractorThings();
+  driver = buildDriver(tractor.model);
   jacob = G.jacob = buildJacob(); scene.add(jacob.root);
   buildHands();
-  buildProps(); buildRooms(); tick('props'); buildDetail(); tick('detail');
+  buildProps(); buildRooms(); buildGate(); tick('props'); buildDetail(); tick('detail');
   for (const l of W.leaks) waterThing({ id: 'leak' + Math.round(l.z), name: l.name || 'Pipeline leak', x: l.x, z: l.z, r: 2.2, line: l.line || 'Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', prov: ['X', 'the old water pipeline: ' + NEW] });
   for (const w of W.water || []) waterThing({ ...w, y: w.y, r: 1.6 });
   tractor.x = 0; tractor.z = 8; P.x = tractor.x; P.z = tractor.z; view.lastX = 0; view.lastZ = 8;
@@ -1044,18 +1089,19 @@ async function boot() {
   bindInput({
     canvas,
     started: () => S.started, paused: () => S.paused || S.dead || S.ended, menuOpen: () => !ui.menu.hidden, jotOpen: () => !ui.jot.hidden,
-    screenOpen: () => !ui.title.hidden || !ui.end.hidden, driving: () => S.inTractor,
+    screenOpen: () => !ui.title.hidden || !ui.end.hidden || !ui.choice.hidden, driving: () => S.inTractor,
     onAnyInput: () => initAudio(),
     onMode: () => { modeKey = ''; gaugeKey = ''; if (!ui.menu.hidden) renderMenu(); },
     onStart: begin, onUse: use, onDrink: drink, onSulphur: sulphur, onRadio: radio, onJot: openJot, onJotClose: closeJot, onJotSave: saveJot,
-    onCompass: () => { S.compass = !S.compass; }, onView: () => { S.view = S.view === 'chase' ? 'seat' : 'chase'; view.camYaw = tractor.yaw + P.look; },
+    onCompass: () => { S.compass = !S.compass; },
+    onZoom: (d) => { if (S.inTractor && S.view === 'chase') view.chase = clamp(view.chase + d * 1.2, 4.2, 15); }, onView: () => { S.view = S.view === 'chase' ? 'seat' : 'chase'; view.camYaw = tractor.yaw + P.look; },
     onPrimary: () => { if (S.inTractor || S.paused) return; if (canThrow()) playHand('throw', { release: () => primaryAction(camera) }); else primaryAction(camera); },
     onMenu: (tab) => openMenu(tab), onBack: () => { if (!ui.menu.hidden) closeMenu(); },
     onTab: (d) => { S.menuTab = TABS[(TABS.indexOf(S.menuTab) + d + TABS.length) % TABS.length]; renderMenu(); },
     onMenuNav: (d) => {
       const a = document.activeElement;
       if (a && a.type === 'range' && (d === 'left' || d === 'right')) { const st = Number(a.step) || 0.1; a.value = String(clamp(Number(a.value) + (d === 'right' ? st : -st), Number(a.min), Number(a.max))); a.dispatchEvent(new Event('input', { bubbles: true })); return; }
-      navFocus(!ui.menu.hidden ? ui.menu : !ui.title.hidden ? ui.title : ui.end, d);
+      navFocus(!ui.menu.hidden ? ui.menu : !ui.title.hidden ? ui.title : !ui.choice.hidden ? ui.choice : ui.end, d);
     },
     onMenuSelect: () => { const a = document.activeElement; if (a && a.tagName === 'BUTTON') a.click(); else if (!ui.title.hidden) begin(); },
     onPadConnect: () => { toast('Controller connected · Xbox layout'); if (ui.padNote) ui.padNote.hidden = true; },
@@ -1075,4 +1121,4 @@ ui.btnWs.addEventListener('click', () => setWorkshop(!S.workshop));
 ui.menuClose.addEventListener('click', closeMenu);
 addEventListener('pagehide', stopVoice);
 boot();
-if (DEBUG) window.__road = { THREE, HANDS, playHand, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };
+if (DEBUG) window.__road = { THREE, HANDS, playHand, GS, get driver() { return driver; }, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };

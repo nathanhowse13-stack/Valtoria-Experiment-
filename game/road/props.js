@@ -262,6 +262,31 @@ function strike(s, ox, oy, oz) {
       s.v.multiplyScalar(-0.25); return false;
     }
   }
+  // the animals: a boar's hide, a jaw-jaw's copper shell, a Drop-Stalker up on its ledge
+  for (const b of W.boars || []) {
+    if (b.dead || !near2(b, x, z, 2)) continue;
+    if (seg(b.x, h(b.x, b.z) + 0.6, b.z) < 0.7) {
+      sfx.thud(spot(b.x, b.z, 14)); noise(b.x, b.z, 4); meet('boar');
+      firstHit('boar', 'A stone off its ridge and it bolted, squealing. Bristles like blades, and it runs from a pebble. Out here everything is afraid of something.', ['X', 'a stone at a Razor-Back Boar: ' + NEW]);
+      bounceBack(s, ox, oz); return false;
+    }
+  }
+  for (const j of W.jaws || []) {
+    if (!near2(j, x, z, 1)) continue;
+    if (seg(j.x, h(j.x, j.z) + 0.08, j.z) < 0.3) {
+      sfx.tink(spot(j.x, j.z, 10)); noise(j.x, j.z, 7); meet('jaws');
+      firstHit('jaws', 'It rang like a kettle. The lot of them went to ground like spilled bolts.', ['P', FARM]);
+      bounceBack(s, ox, oz); return false;
+    }
+  }
+  for (const st of W.stalkers || []) {
+    const p = st.g.position; if (Math.abs(p.x - x) > 2 || Math.abs(p.z - z) > 2) continue;
+    if (st.state === 'perched' && seg(p.x, p.y + 0.2, p.z) < 0.9) {
+      noise(p.x, p.z, 3, st); sfx.thud(spot(p.x, p.z, 16)); meet('stalker');
+      firstHit('stalker', 'That found it. Ears flat, pressed to the rock, looking at me now and knowing I’m looking back. It won’t drop on something that’s seen it.', ['X', 'a stone at a Drop-Stalker: ' + NEW]);
+      bounceBack(s, ox, oz); return false;
+    }
+  }
   // litter
   for (const k of KICK.list) {
     if (!near2(k, x, z, 0.6)) continue;
@@ -304,6 +329,8 @@ function strike(s, ox, oy, oz) {
   }
   return false;
 }
+// something made a noise here: the animals within r metres hear it (life.js)
+function noise(x, z, r, hit = null) { (W.noises = W.noises || []).push({ x, z, r, hit }); }
 function bounceBack(s, ox, oz) { s.p.x = ox; s.p.z = oz; s.v.x *= -0.3; s.v.z *= -0.3; s.v.y *= 0.5; }
 // landing: what it lands in decides the sound and what happens next; true once it has stopped
 function land(s, gy) {
@@ -316,6 +343,7 @@ function land(s, gy) {
   }
   // the trough at the windmill, if there's water in it
   if (TROUGH.level > 0.05 && Math.abs(x - TROUGH.x) < 0.95 && Math.abs(z - TROUGH.z) < 0.32) { splash(x, TROUGH.y + 0.1, z, 14, 0.8); sfx.splash(sp); G.scene.remove(s.m); return true; }
+  noise(x, z, 7);
   const kind = surfaceKind(x, z), hard = Math.abs(s.v.y);
   if (s.bounces < 2 && hard > 2.2) {
     s.v.y = hard * (kind === 'seal' ? 0.38 : kind === 'salt' ? 0.3 : 0.22); s.v.x *= 0.55; s.v.z *= 0.55; s.bounces++; s.p.y = gy + 0.03;
