@@ -33,7 +33,7 @@ const SLAB = { down: 2.75, up: 10.0 };
 
 export const GS = {
   phase: 'far',            // far → queue (the trucks ahead are processed) → free (the booth is empty) → scan → tax → proceed → open → through
-  t: 0, step: 0, gate: 0, gateWant: 0, lamp: 0, offer: 0, scarf: false, goggles: false, paid: null, bits: 5, arm: 0, laser: 0, served: null, wait: 0, hail: 0,
+  t: 0, step: 0, gate: 0, gateWant: 0, lamp: 0, offer: 0, scarf: false, goggles: false, paid: null, bits: 8, arm: 0, laser: 0, served: null, wait: 0, hail: 0,
 };
 let gy = 0, shell = null, slab = null, lampM = null, grid = null, trucks = [], folk = [], block = null, terminalGlow = null;
 const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3();
@@ -272,7 +272,7 @@ export function updateGate(dt) {
     if (GS.step === 1 && GS.t > 4.2) { GS.step = 2; GS.gateWant = 1; GS.lamp = 1; GS.phase = 'open'; }
   } else if (GS.phase === 'open') {
     const z = S.inTractor ? tr.z : P.z;
-    if (z > gz + 3.2 && GS.gate > 0.8) { GS.phase = 'through'; hooks.arrive && hooks.arrive(); }
+    if (z > gz + 3.2 && GS.gate > 0.8) { GS.phase = 'through'; hooks.entered && hooks.entered(); }       // under the wall: the town is city/, and the gate stays up behind him
   }
   GS.laser = GS.phase === 'scan' && GS.step === 3 ? 1 : (GS.served && GS.served.state === 'scan' ? GS.laser : 0);
   poseIronshell(dt, who, dist, time);
@@ -291,7 +291,7 @@ function pay(how) {
   GS.asking = false; GS.paid = how; S.flags.paid = how;
   const sp = spot(BOOTH.x, BOOTH.z, 12);
   if (how === 'bits') {
-    GS.bits = 0; for (let k = 0; k < 5; k++) setTimeout(() => sfx.clink(sp), k * 110); setTimeout(() => { for (let k = 0; k < 6; k++) setTimeout(() => sfx.tink(sp), k * 60); }, 800);
+    GS.bits -= 5; for (let k = 0; k < 5; k++) setTimeout(() => sfx.clink(sp), k * 110); setTimeout(() => { for (let k = 0; k < 6; k++) setTimeout(() => sfx.tink(sp), k * 60); }, 800);
     hooks.bark('Five small, jagged crystals, into the counting terminal. The machine closes its fist on them. They rattle.', C2);
   } else {
     if (S.can > 0) S.can--; else S.sips--;
@@ -322,6 +322,12 @@ function poseIronshell(dt, who, dist, time) {
     drawGrid(from, to, busy ? 1.6 : 1, time);
     grid.m.material.opacity = 0.65 + Math.random() * 0.35;
   }
+}
+// starting in the town (?at=city, or the title's choice): the gate already behind him, paid in bits, and standing open
+export function gatePassed() {
+  Object.assign(GS, { phase: 'through', served: null, gate: 1, gateWant: 1, lamp: 1, paid: 'bits', bits: 3, goggles: true, asking: false });
+  S.flags.paid = 'bits';
+  for (const t of trucks) if (t.state !== 'gone') { t.state = 'gone'; t.g.visible = false; t.smoke.rate = 0; for (const c of t.cols) c.off = true; }
 }
 // what the driver's body is asked to do (driver.js reads it every frame)
 export const gatePose = () => ({ offer: GS.offer, scarfDown: GS.scarf, gogglesDown: GS.goggles });

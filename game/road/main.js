@@ -35,7 +35,10 @@ import { HANDS, buildHands, playHand, updateHands } from './hands.js';
 import { buildFar, updateFar } from './far.js';
 import { buildRooms, updateRooms } from './rooms.js';
 import { buildDriver } from './driver.js';
-import { buildGate, updateGate, gatePose, GS } from './gate.js';
+import { buildGate, updateGate, gatePose, gatePassed, GS } from './gate.js';
+import { CITY, buildCity, buildTown, finishCity } from '../city/build.js';
+import { PLACES, buildPlaces, updatePlaces } from '../city/places.js';
+import { inCity, cityWeight, NORTH, GATE_AT } from '../city/plan.js';
 import { audio, initAudio, sfx, updateAudio, setMuted } from './sound.js';
 import { input, bindInput, pollInput, takeLook, saveSettings, rumble, navFocus, releaseLock } from './input.js';
 import { buildJacob } from './jacob.js';
@@ -97,6 +100,7 @@ const SKY = {
   zenLow: lit(0.3, 0.33, 0.5), zenHigh: lit(0.25, 0.39, 0.66),
   midLow: lit(0.68, 0.6, 0.62), midHigh: lit(0.6, 0.64, 0.74),
   sunHazeLow: lit(0.99, 0.8, 0.52), sunHazeHigh: lit(0.97, 0.9, 0.78),     // what the haze does towards the sun
+  cityHaze: lit(0.62, 0.5, 0.42),                                            // the town's own air: iron oxide and coal dust
 };
 const skyU = { uSun: { value: sunDir }, uHaze: { value: new THREE.Color() }, uMid: { value: new THREE.Color() }, uZen: { value: new THREE.Color() }, uSunHaze: { value: new THREE.Color() }, uSunCol: { value: new THREE.Color(1, 0.8, 0.55) }, uDrift: { value: new THREE.Vector2() }, uCloud: { value: 0.85 } };
 const sky = new THREE.Mesh(new THREE.SphereGeometry(2000, 48, 24), new THREE.ShaderMaterial({
@@ -326,6 +330,10 @@ function pickChoice(i) { const d = choiceDef, o = d && d.options[i]; if (!o || o
 ui.choice.addEventListener('click', (e) => { const b = e.target.closest('[data-pick]'); if (b) pickChoice(Number(b.dataset.pick)); });
 addEventListener('keydown', (e) => { if (choiceDef && /^Digit[1-9]$/.test(e.code) && ui.menu.hidden && ui.jot.hidden) pickChoice(Number(e.code.slice(5)) - 1); });
 hooks.arrive = () => { if (!S.flags.arrived) arrive(); };
+// under the wall and into the town
+hooks.entered = () => { toast('Bleak Flats'); once('entered', 'The air’s thick enough to chew. Old pennies and decay. If the desert is a silence that tries to kill you, this is a noise that tries to drive you mad.', ['C', CH2]); };
+// the stairs up to Cogswell's office: where the morning ends
+hooks.cogswell = () => { if (!S.flags.arrived) arrive(); };
 hooks.fillWater = (line, prov) => { S.sips = 4; const c = topUpCanister(); sfx.fill(); updateVitals(); bark(line + c, prov); };
 
 // ---------- the tractor: the shared model, and where it is ----------
@@ -652,7 +660,7 @@ function driveTractor(dt) {
   T.brk += (input.brake - T.brk) * damp(10, dt);
   T.steer += (input.steer - T.steer) * damp(Math.abs(input.steer) > Math.abs(T.steer) ? 4.2 : 7, dt);
   const n = nearestRoad(T.x, T.z, 1), salt = saltAt(T.x, T.z);
-  T.offroad = !n.s || n.d > (n.s.route === 'canyon' ? 3.2 : 4.6);
+  T.offroad = inCity(T.x, T.z, 1) ? false : !n.s || n.d > (n.s.route === 'canyon' ? 3.2 : 4.6);      // the town's streets are all hard dirt
   const crush = nearbySpinifex(T.x, T.z).length ? 0.85 : 1;
   const max = SPEED.tractor * (T.offroad ? (salt > 0.5 ? SPEED.salt : SPEED.offroad) : 1) * crush * (G.redline > 0 ? 1.3 : 1);
   if (T.stall > 0) { T.stall -= dt; T.speed = lerp(T.speed, 0, clamp(dt * 3, 0, 1)); }
@@ -667,7 +675,7 @@ function driveTractor(dt) {
   if (!landBlocked(nx, T.z, 1.3)) T.x = nx; else hit += Math.abs(nx - T.x);
   if (!landBlocked(T.x, nz, 1.3)) T.z = nz; else hit += Math.abs(nz - T.z);
   for (let i = 0; i < 2; i++) hit += collide(T, 1.3);
-  T.x = clamp(T.x, -HALF_W + 10, HALF_W - 10); T.z = clamp(T.z, -50, 1900);
+  T.x = clamp(T.x, -HALF_W + 10, HALF_W - 10); T.z = clamp(T.z, -50, NORTH - 8);
   if (hit > 0.004 && dt > 0) {
     // she ploughs into it and scrubs her speed off rather than stopping dead; a real knock rings through the frame
     const lost = clamp(hit / (Math.abs(T.speed) * dt + 0.01), 0, 1);
@@ -727,7 +735,7 @@ function walk(dt) {
     if (!landBlocked(P.x, nz, SPEED.radius)) P.z = nz;
     for (let i = 0; i < 3; i++) collide(P, SPEED.radius);
     { const dx = P.x - tractor.x, dz = P.z - tractor.z, d = Math.hypot(dx, dz); if (d < 1.4 && d > 1e-3) { P.x = tractor.x + dx / d * 1.4; P.z = tractor.z + dz / d * 1.4; } }
-    P.x = clamp(P.x, -HALF_W + 5, HALF_W - 5); P.z = clamp(P.z, -50, 1900);
+    P.x = clamp(P.x, -HALF_W + 5, HALF_W - 5); P.z = clamp(P.z, -50, NORTH - 4);
     // walking up into a cave mouth takes him in
     for (const id in CAVES) { const m = CAVES[id].mouth; if (Math.hypot(P.x - (m.x - m.ox * 0.2), P.z - (m.z - m.oz * 0.2)) < 0.7) { enterCave(id); return; } }
   }
@@ -845,7 +853,7 @@ function updateSun(dt) {
   sun.target.position.copy(_ctr); sun.position.copy(_ctr).addScaledVector(shadowDir, 170); sun.target.updateMatrixWorld();
   const low = smooth(0.42, 0.06, sunDir.y);
   sun.color.setRGB(1, lerp(0.9, 0.62, low), lerp(0.76, 0.38, low)); sun.intensity = lerp(3.4, 2.3, low);
-  hemi.intensity = lerp(0.55, 0.42, low);
+  hemi.intensity = lerp(0.55, 0.42, low) * (1 - 0.7 * (G.indoor || 0));
   // the haze: orange at dawn, paler as the day gets up, thicker with the heat; brighter and golden towards the sun
   _c.copy(SKY.hazeHigh).lerp(SKY.hazeLow, low); scene.fog.color.copy(_c); skyU.uHaze.value.copy(_c);
   skyU.uZen.value.copy(SKY.zenHigh).lerp(SKY.zenLow, low); skyU.uMid.value.copy(SKY.midHigh).lerp(SKY.midLow, low);
@@ -853,6 +861,8 @@ function updateSun(dt) {
   skyU.uSunCol.value.setRGB(1, lerp(0.86, 0.66, low), lerp(0.66, 0.36, low));
   skyU.uDrift.value.x += WIND.x * dt * 0.006 * (0.5 + WIND.gust); skyU.uDrift.value.y += WIND.z * dt * 0.006 * (0.5 + WIND.gust);
   scene.fog.density = 0.0018 + smooth(10, 14, hr) * 0.0008;
+  // inside the walls the air is "a suspension of pulverised iron oxide, coal dust": thicker, and browner
+  { const cw = cityWeight(camera.position.x, camera.position.z, 40); if (cw > 0) { scene.fog.density += 0.0042 * cw; _c.lerp(SKY.cityHaze, 0.55 * cw); scene.fog.color.copy(_c); } }
   sky.position.copy(camera.position);
   post.shaftColor.setRGB(1, lerp(0.84, 0.7, low), lerp(0.62, 0.42, low));
   updateFar(sunDir, sun.color, scene.fog.color);
@@ -991,7 +1001,7 @@ function frame(dt, raw) {
   if (live) {
     S.time += dt * TIME_SCALE; G.time += dt;
     if (S.inTractor) driveTractor(dt); else walk(dt);
-    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); updateGate(dt); }
+    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); updateGate(dt); updatePlaces(dt, camera.position); }
     updateProps(dt); updateRooms(dt);
     hazards(dt); survive(dt);
     if (G.redline > 0) G.redline = Math.max(0, G.redline - dt);
@@ -1011,6 +1021,9 @@ function frame(dt, raw) {
   areaLook(cave);
   for (const c of W.chunks || []) c.userData.scatter.visible = Math.abs(c.userData.z - camera.position.z) < view.chunkFar;     // how far the scatter is drawn depends on the quality setting; the ground always is
   for (const r of RELICS) if (r.m.visible) r.m.rotation.y += dt * 1.5;
+  if (CITY.root) CITY.root.visible = camera.position.z > 1380;                                  // the town, when it's near enough to see
+  // indoors (the Cog), the eyes open up to the gloom, as they did in the caves; the sky's light doesn't reach in
+  if (G.area === 'out') G.exposureTarget = 1.05 + 0.6 * (G.indoor || 0);
   // what's near enough to hear: worked out a few times a second, not every frame
   if ((amb.t -= raw) <= 0) {
     amb.t = 0.2; const p = here(); cullFar();
@@ -1056,8 +1069,12 @@ function begin() {
   if (ui.fxFade.classList.contains('on')) setTimeout(() => { ui.fxFade.style.transition = ''; ui.fxFade.classList.remove('on'); ui.fadeLine.hidden = true; arrive0(); }, reduceMotion ? 50 : 1300);
   else arrive0();
   setTimeout(() => toast(input.mode === 'pad' ? 'RT to drive · A to climb down · Menu for the notebook' : 'W to drive · E to climb down · Tab for the notebook · N to jot an idea'), 2600);
+  // (tests, and the title's shortcut: start at the gate, or already through it)
+  if (startAt === 'city') { gatePassed(); tractor.x = 0; tractor.z = GATE_AT.z + 18; tractor.yaw = 0; view.lastX = 1e9; S.time = 6 * 3600 + 52 * 60; P.x = tractor.x; P.z = tractor.z; }
+  else if (startAt === 'gate') { tractor.x = 0.6; tractor.z = GATE_AT.z - 120; tractor.yaw = 0; view.lastX = 1e9; S.time = 6 * 3600 + 48 * 60; P.x = tractor.x; P.z = tractor.z; }
   updateVitals(); canvas.focus();
 }
+let startAt = QS.get('at') || '';
 // small animals a long way off are a few pixels each but still cost a draw apiece: each is wrapped in a group of its
 // own, so it can be dropped past a sensible distance without touching the visibility its own behaviour sets
 const CULL = [];
@@ -1074,7 +1091,8 @@ async function boot() {
   driver = buildDriver(tractor.model);
   jacob = G.jacob = buildJacob(); scene.add(jacob.root);
   buildHands();
-  buildProps(); buildRooms(); buildGate(); tick('props'); buildDetail(); tick('detail');
+  buildProps(); buildRooms(); buildGate(); tick('props');
+  buildCity(); buildPlaces(); buildTown(); finishCity(); tick('city'); buildDetail(); tick('detail');
   for (const l of W.leaks) waterThing({ id: 'leak' + Math.round(l.z), name: l.name || 'Pipeline leak', x: l.x, z: l.z, r: 2.2, line: l.line || 'Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', prov: ['X', 'the old water pipeline: ' + NEW] });
   for (const w of W.water || []) waterThing({ ...w, y: w.y, r: 1.6 });
   tractor.x = 0; tractor.z = 8; P.x = tractor.x; P.z = tractor.z; view.lastX = 0; view.lastZ = 8;
@@ -1121,4 +1139,4 @@ ui.btnWs.addEventListener('click', () => setWorkshop(!S.workshop));
 ui.menuClose.addEventListener('click', closeMenu);
 addEventListener('pagehide', stopVoice);
 boot();
-if (DEBUG) window.__road = { THREE, HANDS, playHand, GS, get driver() { return driver; }, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };
+if (DEBUG) window.__road = { THREE, HANDS, playHand, GS, CITY, PLACES, inCity, cityWeight, gatePassed, get driver() { return driver; }, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };

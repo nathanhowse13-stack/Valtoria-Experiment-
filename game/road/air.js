@@ -75,7 +75,7 @@ let motesU = null, devil = null;
 export function buildAir() {
   const puff = puffTexture(), spark = sparkTexture(), scene = G.scene;
   FX.dust = new Particles(900, puff, {});
-  FX.smoke = new Particles(520, puff, {});
+  FX.smoke = new Particles(900, puff, {});
   FX.sparks = new Particles(260, spark, { additive: true });
   FX.water = new Particles(420, spark, {});
   for (const k in FX) { scene.add(FX[k].points); scaleU.push(FX[k].u.uScale); }
@@ -148,9 +148,10 @@ export function updateAir(dt, { tractor = null, driving = false, cave = false } 
     // smoke from the stacks, the trucks and the wreck's boiler
     for (const s of W.smoke) {
       if (Math.abs(s.z - cam.position.z) > 900) continue;
+      if (s.near && (s.x - cam.position.x) ** 2 + (s.z - cam.position.z) ** 2 > s.near * s.near) continue;      // small fires: only the ones close by
       if (Math.random() < dt * (s.rate || 1.2)) {
         const c = (s.mat || M.smoke).color, a = (s.mat || M.smoke).opacity, sz = s.size || 1;
-        FX.smoke.emit(s.x, s.y, s.z, { vx: WIND.x * (1.0 + WIND.gust), vy: 2.0 + Math.random() * 0.6, vz: WIND.z * (1.0 + WIND.gust), life: 13 + Math.random() * 3, size: sz * 2.2, size1: sz * 17, alpha: a * 1.5, color: [c.r * 1.6, c.g * 1.6, c.b * 1.6], drag: 0.05, spread: 0.5 });
+        FX.smoke.emit(s.x, s.y, s.z, { vx: WIND.x * (1.0 + WIND.gust), vy: 2.0 + Math.random() * 0.6, vz: WIND.z * (1.0 + WIND.gust), life: (s.life || 13) + Math.random() * 3, size: sz * 2.2, size1: sz * (s.life ? 9 : 17), alpha: a * 1.5, color: [c.r * 1.6, c.g * 1.6, c.b * 1.6], drag: 0.05, spread: 0.5 });
       }
     }
     // spray from the burst mains: a fan of drops, and the mist off it

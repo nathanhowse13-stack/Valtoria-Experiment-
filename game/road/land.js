@@ -18,6 +18,7 @@
 // ============================================================
 import { THREE, clamp, lerp, smooth, rng, noise2, G, W, blockers, shades, addThing, MX, rodMX, planarUV, merge, mesh, M, SWAY, NEW, CH2, GUIDE, hooks, S } from './core.js';
 import { rockGeometry, bushGeometry, deadBushGeometry, snagGeometry, spoilGeometry, mesaGeometry, joinColoured, swayPatch } from './shapes.js';
+import { cityGround, cityWeight, inCity, districtAt, ARC, EAST } from '../city/plan.js';
 
 export const LORE_KM = 20, ARRIVE_Z = 1782;
 export const HALF_W = 330;
@@ -130,9 +131,9 @@ export function h(x, z) {
   // the strip mines
   for (const p of PITS) { const d = Math.hypot(x - p.x, z - p.z); if (d < p.r + 6) y = lerp(y, -p.depth, smooth(p.r, p.r * 0.62, d)); }
   { const dx = ADIT.x - x, dz = Math.abs(z - ADIT.z); if (dx > -1 && dx < 8 && dz < 5) y = lerp(y, -PITS[0].depth, smooth(5, 3, dz) * smooth(8, 6, dx)); }   // the pit floor runs level into the adit
-  // the slight rise Bleak Flats sits on
+  // the slight rise Bleak Flats sits on, and inside its walls the town's own ground (city/plan.js)
   y += smooth(1800, 1950, z) * 4;
-  return y;
+  return cityGround(x, z, y);
 }
 // where can't Jacob or the tractor go: into the canyon walls and the mesa they hold up
 export function landBlocked(x, z, r) {
@@ -151,6 +152,7 @@ export function landBlocked(x, z, r) {
 
 // ---------- names for where Jacob is ----------
 export function placeAt(x, z) {
+  const district = districtAt(x, z); if (district) return district;
   if (inCanyon(x, z)) return z < 480 ? 'the Old Canyon Road, among the gums' : z < 670 ? 'the Old Canyon Road, in the spinifex' : 'the Old Canyon Road';
   if (saltAt(x, z) > 0.4) return 'the salt pans';
   if (Math.hypot(x - TALLY.x, z - TALLY.z) < 60) return 'Tally Bore';
@@ -164,8 +166,9 @@ export function placeAt(x, z) {
 }
 
 // ---------- building it ----------
+export const LAND_Z1 = 2500;                                          // how far north the land's own ground goes (far.js carries on from there)
 export function buildLand() {
-  for (let i = -1; i <= 20; i++) buildChunk(i);
+  for (let i = -1; i < LAND_Z1 / 100; i++) buildChunk(i);
   for (const k in ROUTES) roadRibbon(ROUTES[k], k === 'canyon' ? 4.6 : 7.6, 1.0, k !== 'canyon');
   for (const k of ['gate', 'main', 'north']) { centreLine(ROUTES[k]); guidePosts(ROUTES[k], 7.6); }
   buildCanyon(); buildEscarpment(); buildSaltPans(); buildTransmissionLine(); buildPipeline(); buildMesas(); buildOutskirts(); buildBleakFlats(); buildSigns();
@@ -185,6 +188,7 @@ function buildChunk(i) {
     salty.push(salt);
     for (const p of PITS) { const d = Math.hypot(x - p.x, z - p.z); if (d < p.r + 8) _c.lerp(_t.setRGB(0.72, 0.6, 0.58), smooth(p.r + 8, p.r * 0.7, d) * 0.6); }
     if (inCanyon(x, z)) _c.multiplyScalar(0.86);                                                  // the canyon floor, in its own shadow
+    const cw = cityWeight(x, z, 10); if (cw > 0) _c.lerp(_t.setRGB(0.8, 0.64, 0.56).multiplyScalar(0.9 + n * 0.2), cw * 0.65);   // the town's ground: trodden, sooty, redder
     col.push(_c.r, _c.g, _c.b);
   }
   for (let j = 0; j < NZ; j++) for (let k = 0; k < NX; k++) { const a = j * (NX + 1) + k, b = a + 1, c = a + NX + 1, d = c + 1; idx.push(a, c, b, b, c, d); }
@@ -199,7 +203,7 @@ function buildChunk(i) {
     const z = z0 + R() * 100, x = (R() - 0.5) * 2 * (HALF_W - 10), roll = R();
     const rd = roadDist(x, z), salt = saltAt(x, z), cw = canyonWeight(z);
     if (rd < 9 || (cw > 0.2 && Math.abs(x - canyonAxisX(z)) > CANYON.half - 1 && Math.abs(x - canyonAxisX(z)) < mesaOuter(x > canyonAxisX(z) ? 1 : -1) + 14)) continue;
-    if (nearReserved(x, z)) continue;
+    if (nearReserved(x, z) || inCity(x, z, -14)) continue;
     if (salt > 0.5) { if (roll < 0.06) scrub.push([x, z, 0.3 + R() * 0.3, R()]); continue; }   // the pans are nearly bare
     if (inCanyon(x, z)) { if (roll < 0.3) rocks.push([x, z, 0.4 + R() * 1.4, R()]); continue; }   // the canyon floor gets its own spinifex
     if (roll < 0.13) {
@@ -215,7 +219,7 @@ function buildChunk(i) {
   for (let k = 0; k < 300; k++) {
     const z = z0 + R() * 100, x = (R() - 0.5) * 2 * (HALF_W - 10), keep = R(), s = 0.3 + R() * 0.45, r = R();
     if (keep > smooth(-0.15, 0.55, noise2(x * 0.45 + 17, z * 0.45 - 9))) continue;
-    if (roadDist(x, z) < 9 || saltAt(x, z) > 0.4 || inCanyon(x, z) || nearReserved(x, z)) continue;
+    if (roadDist(x, z) < 9 || saltAt(x, z) > 0.4 || inCanyon(x, z) || nearReserved(x, z) || inCity(x, z, -14)) continue;
     const cw = canyonWeight(z); if (cw > 0.2 && Math.abs(x - canyonAxisX(z)) < mesaOuter(x > canyonAxisX(z) ? 1 : -1) + 14) continue;
     if (h(x, z) > 6) continue;
     scrub.push([x, z, s, r]);
@@ -298,7 +302,7 @@ export function addSpinifex(g, clumps, chunk, blades = 14) {
 
 // the road: a compacted ribbon, paler in the middle, wheel ruts either side. The old main road is sealed: what's
 // left of the bitumen, grey under red dust, gone back to dirt at its crumbling edges and in potholes.
-function roadRibbon(samples, width, tone, sealed = false) {
+export function roadRibbon(samples, width, tone, sealed = false) {
   const half = width / 2, across = [-1, -0.68, -0.5, -0.3, -0.15, 0.15, 0.3, 0.5, 0.68, 1], shade = [0.86, 1.12, 0.66, 1.16, 1.22, 1.22, 1.16, 0.66, 1.12, 0.86];
   const p = [], c = [], u = [], ix = [], n = across.length;
   samples.forEach((s) => {
@@ -625,8 +629,8 @@ function buildOutskirts() {
 // ---------- Bleak Flats: walls of corrugated iron and scrap, spikes and wire, stacks belching yellow-black, a queue at the south gate ----------
 export const GATE = { x: 0, z: 1838 };
 function buildBleakFlats() {
-  const cx = 0, cz = 2015, rad = 178, parts = [], spikes = [], plates = [];
-  for (let a = -1.25; a <= 1.25; a += 0.035) {
+  const cx = ARC.cx, cz = ARC.cz, rad = ARC.r, parts = [], spikes = [], plates = [];
+  for (let a = Math.asin(EAST / rad) + 0.0175; a <= ARC.a; a += 0.035) {                       // the curve runs round to the long walls (city/build.js)
     if (Math.abs(a) < 0.03) continue;                                                            // the gate
     const x = cx + Math.sin(a) * rad, z = cz - Math.cos(a) * rad, y = h(x, z) - 0.5, ht = 8 + 2.5 * Math.sin(a * 23) + (Math.sin(a * 61) > 0.6 ? 2 : 0), w = rad * 0.036;
     plates.push([new THREE.BoxGeometry(w, ht, 0.2), MX(x, y + ht / 2, z, 0, -a, Math.sin(a * 37) * 0.04)]);
@@ -643,16 +647,5 @@ function buildBleakFlats() {
   for (const s of [-1, 1]) { gate.push([new THREE.BoxGeometry(2.2, 13, 2.2), MX(gx + s * 5.2, gy + 6.5, gz)], [new THREE.CylinderGeometry(0.18, 0.18, 6, 8), MX(gx + s * 3.8, gy + 8, gz - 0.6)]); blockers.push({ x0: gx + s * 5.2 - 1.1, z0: gz - 1.1, x1: gx + s * 5.2 + 1.1, z1: gz + 1.1 }); }
   gate.push([new THREE.BoxGeometry(10.6, 0.8, 2.4), MX(gx, gy + 13.2, gz)]);
   G.scene.add(mesh(planarUV(merge(gate), 1.5), M.iron));
-  // beyond the wall: leaning towers of scrap, and the refinery stacks
-  const towers = [];
-  const R = rng(55);
-  for (let k = 0; k < 26; k++) { const a = -0.9 + R() * 1.8, d = 40 + R() * 120, x = cx + Math.sin(a) * d, z = cz - Math.cos(a) * d + 20, ht = 8 + R() * 14; towers.push([new THREE.BoxGeometry(6 + R() * 6, ht, 6 + R() * 5), MX(x, h(x, z) + ht / 2, z, 0, R() * 3, (R() - 0.5) * 0.12)]); }
-  G.scene.add(mesh(planarUV(merge(towers), 2), M.corr));
-  const stacks = [];
-  for (const [x, z, ht] of [[-40, 1960, 42], [-12, 2010, 50], [22, 1985, 38], [55, 2040, 46], [-70, 2050, 36], [8, 2080, 44]]) {
-    stacks.push([new THREE.CylinderGeometry(1.6, 2.4, ht, 12), MX(x, h(x, z) + ht / 2, z)], [new THREE.TorusGeometry(1.7, 0.2, 6, 14), MX(x, h(x, z) + ht - 1, z, Math.PI / 2, 0, 0)]);
-    W.smoke.push({ x, y: h(x, z) + ht + 1, z, rate: 1.4, mat: M.yellowSmoke, size: 2.4 });
-  }
-  G.scene.add(mesh(merge(stacks), M.rust));
   addThing({ id: 'gate', name: 'The south gate', verb: 'Look', x: gx, y: gy + 2, z: gz - 1.2, r: 3, prov: ['C', CH2], use: () => hooks.bark('The gates of Bleak Flats don’t open for free. Five bits, or three ounces of raw water.', ['C', CH2]) });
 }

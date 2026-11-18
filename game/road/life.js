@@ -112,8 +112,8 @@ function buildShack(def) {
 }
 
 // ---------- the Gallows-Gum, as Chapter Two has it ----------
-function buildGum(def) {
-  const { x, z } = def, y = h(x, z), g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = -def.side * Math.PI / 2; G.scene.add(g);      // the waiting limb reaches out over the road
+export function buildGum(def) {
+  const { x, z } = def, y = h(x, z), g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = def.yaw ?? -def.side * Math.PI / 2; G.scene.add(g);      // the waiting limb reaches out over the road (or wherever it's told)
   const R = rng(Math.round(z * 31)), trunk = [], leaves = [], pale = [], flesh = [];
   trunk.push([new THREE.CylinderGeometry(0.42, 0.75, 9, 12), MX(0, 4.5, 0)]);
   const limbs = [];

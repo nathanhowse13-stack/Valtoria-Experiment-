@@ -13,16 +13,16 @@
 // it; the ones with their backs to it stand as dark shapes.
 // ============================================================
 import { THREE, clamp, lerp, smooth, noise2, G, M } from './core.js';
-import { h, HALF_W } from './land.js';
+import { h, HALF_W, LAND_Z1 } from './land.js';
 import { HAZEU } from '../shared/post.js';
 
-const Z0 = -100, Z1 = 2100;                                  // the land's own extent (land.js builds chunks −1 to 20)
+const Z0 = -100, Z1 = LAND_Z1;                               // the land's own extent (land.js builds its chunks to LAND_Z1)
 const OUT = [5, 15, 35, 75, 155, 315, 635, 1100, 1700, 2400];   // how far past the edge each row or column of the skirt sits
 
 // ---------- the skirt ----------
 const edgeCache = new Map();
 function edgeH(cx, cz) { const k = cx + ',' + cz; let v = edgeCache.get(k); if (v === undefined) { v = h(cx, cz) - 0.02; edgeCache.set(k, v); } return v; }
-function farHeight(x, z) {
+export function farHeight(x, z) {
   const cx = clamp(x, -HALF_W, HALF_W), cz = clamp(z, Z0, Z1), d = Math.hypot(x - cx, z - cz);
   const edge = edgeH(Math.round(cx * 100) / 100, Math.round(cz * 100) / 100);
   if (d <= 0) return edge;
