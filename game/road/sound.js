@@ -27,6 +27,8 @@ export function initAudio() {
   audio.whistle = band('bandpass', 2400, 6);          // what it does round wire and tin when it gusts
   audio.rattle = band('bandpass', 1700, 1.2);         // the tractor's panels at speed
   audio.spray = band('highpass', 2600, 0.7);          // a burst main
+  audio.crowd = band('bandpass', 520, 0.9);           // the town: a crowd's murmur, nobody's words
+  audio.chatter = band('bandpass', 1350, 3.5);        // and the voices you can almost pick out of it
   // the engine: two cylinders, so it pops rather than hums
   const o1 = ac.createOscillator(), o2 = ac.createOscillator(); o1.type = 'sawtooth'; o2.type = 'square';
   const ef = ac.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 380;
@@ -178,6 +180,10 @@ export function updateAudio(dt, st) {
   set(audio.buzz.o1.frequency, 196 + Math.sin(now * 3.1) * 8, 0.05); set(audio.buzz.o2.frequency, 213 + Math.sin(now * 2.3 + 1) * 9, 0.05);
   set(audio.hum.gain, quiet || st.cave ? 0 : (st.wires || 0) * (0.004 + 0.008 * gust) + (st.live || 0) * 0.02, 0.3);
   set(audio.spray.g.gain, quiet || st.cave ? 0 : (st.spray || 0) * 0.07, 0.2);
+  // inside the walls: "a noise that tries to drive you mad", rising and falling as people pass
+  const town = quiet || st.cave ? 0 : (st.town || 0), sway = 0.5 + 0.25 * Math.sin(now * 1.7) + 0.25 * Math.sin(now * 2.9 + 1);
+  set(audio.crowd.g.gain, town * (0.02 + 0.016 * sway), 0.25); set(audio.crowd.f.frequency, 460 + 140 * Math.sin(now * 0.6), 0.4);
+  set(audio.chatter.g.gain, town * 0.01 * Math.max(0, Math.sin(now * 4.3) * Math.sin(now * 1.3 + 2)), 0.08); set(audio.chatter.f.frequency, 1100 + 500 * Math.abs(Math.sin(now * 0.9)), 0.1);
   if (quiet) return;
   // one-shots on their own clocks
   if (!st.cave) {
@@ -185,8 +191,10 @@ export function updateAudio(dt, st) {
     if (W.mills) for (const m of W.mills) { if (m.braked) continue; m.sq = (m.sq || 0) - dt * (m.spin || 0.5); if (m.sq < 0) { m.sq = 2.1; const s = spot(m.x, m.z, 14); if (s.gain > 0.03) sfx.squeak(s); } }
     if (W.flags && (T.flap -= dt * (0.3 + gust * 1.5)) < 0) { T.flap = 1.5 + Math.random() * 3; let best = null, bd = 25; for (const f of W.flags) { const d = Math.hypot(f.x - st.x, f.z - st.z); if (d < bd) { bd = d; best = f; } } if (best) sfx.flap(spot(best.x, best.z, 7)); }
     // the stacks and presses of the Flats, louder as the walls come up
-    const near = clamp((st.z - 1300) / 490, 0, 1);
+    const near = clamp((st.z - 1300) / 490, 0, 1) * (1 - clamp((st.town || 0) * 1.5, 0, 1));          // inside, the stamp-mills are their own (city/places.js)
     if (near > 0 && (T.thump -= dt) <= 0) { T.thump = 0.9; sfx.thump(0.06 + near * near * 0.22); }
+    // the town's own clatter: iron dropped somewhere, a can kicked, a door slammed
+    if ((st.town || 0) > 0.5 && (T.clank = (T.clank ?? 2) - dt) < 0) { T.clank = 1.5 + Math.random() * 4; const q = Math.random(), sp = { gain: 0.25 + Math.random() * 0.35, pan: Math.random() * 1.6 - 0.8 }; if (q < 0.4) sfx.clang(0.4 + Math.random() * 0.4, sp); else if (q < 0.7) sfx.tink(sp); else if (q < 0.85) sfx.knock(sp); else sfx.latch(sp); }
     // stones ticking as the day heats them
     if ((T.tick -= dt) < 0) { T.tick = 5 + Math.random() * 12; if (!st.driving) noiseHit({ f: 3600 + Math.random() * 1500, q: 7, dur: 0.03, gain: 0.03, pan: Math.random() * 1.6 - 0.8 }); }
   } else if (G.area === 'seep' && (T.drip -= dt) < 0) { T.drip = 0.8 + Math.random() * 2.2; sfx.drip({ gain: 0.6 + Math.random() * 0.6, pan: Math.random() - 0.5 }); }

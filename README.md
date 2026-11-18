@@ -1,6 +1,7 @@
 # Valtoria Experiment
 
-A playable first-person sketch of *Valtoria*, Chapter One: Jacob's morning on the farm at Bleak Flats.
+A playable first-person sketch of *Valtoria*: Jacob's morning on the farm (Chapter One), the drive across
+the Red Waste, and the town of Bleak Flats (Chapter Two).
 It runs in the browser with Three.js. Nothing needs installing.
 
 ## What's here
@@ -27,7 +28,11 @@ game/
   road/far.js       past the edge of the land: ground out to the horizon, and three ranges of hills fading into the haze
   road/driver.js    Jacob at the wheel: duster, goggles, scarf, hands on the rim, a head that looks where you look
   road/gate.js      the south gate of Bleak Flats: the queue, the Ironshell, the scan, the entry tax, the slab of ship plating
-  road/sound.js     the road's synthesised sound: wind, engine, wires, tin, footsteps by surface, every knock and clang
+  road/sound.js     the road's synthesised sound: wind, engine, wires, tin, footsteps by surface, every knock and clang; the town's murmur
+  city/plan.js      Bleak Flats laid out: the walls, the Artery's kinked spine, the side roads, the caste walls, the sites, the town's ground
+  city/build.js     the town built from the plan: the Artery's leaning towers, the districts, cables, lamps and signs, all instanced
+  city/places.js    the landmarks: the Rusty Cog, Water Square, the markets, Scrimp's stall, the stamp-mills, the Bones, the refinery, the sheriff's station
+  city/folk.js      the people: the town's castes in the street, walking, working, scrubbing, sitting, staring
   road/input.js     keyboard, mouse and Xbox controller
   road/jacob.js     Jacob's legs and boots, dressed for the road
   road/main.js      the player: the tractor and Jacob on foot, the camera, the sky and sun, HUD, notebook, survival
@@ -160,6 +165,45 @@ palm throws a grid of green light over it. Caste, name, solvency. Then the entry
 chapter only states: five bits, or three ounces of raw water out of what you carried all the way. Pay
 either and the gate groans up. The Ironshell's words are the chapter's own (Canon); choosing how to pay,
 the lamp on the booth and the people on foot are this sketch's (Experimental).
+
+### Bleak Flats
+
+The gate now opens onto the town. It's laid out from the *Bleak Flats Main Street* blockout (its kinked
+spine, seven side roads, the caste walls, the districts and where the landmarks stand), turned to face the
+way the road arrives and scaled to sixty per cent so the street is a canyon. The blockout's street plan,
+district names and gates are design proposals, not canon, so they're tagged Experimental.
+
+**The Artery** is Chapter Two's: "a canyon of scrap metal", towers of corrugated iron, welded junk and
+repurposed containers three or four storeys high, each storey leaning further out over the street than the
+one below, lashed together with cables strung with rags and jars of fungus-light. Shops at street level, half-up
+shutters, awnings, signs, tanks and stovepipes on the roofs. Behind the frontage: the Warrens packed tight with
+dugouts, the Workers' Block in rows, the old workshops of North Ridge, and the High Caste Terrace standing a storey
+higher behind its own wall and gate. Every box in town is one instanced draw, its iron textured by the metre:
+corrugations, container ribs, plank gaps, rust run down from the top edges, street-red at the foot.
+
+**The Rusty Cog** is built inside an ancient steel cylinder lying on its side, with the blockout's two-storey
+verandah hotel front: cast-iron lace, the name across the parapet, a great iron cog turning over it, Cogswell &
+Associates upstairs. The giant blade hangs on chains off a gantry over the forecourt and sways. Scour-brush hedges
+in perfect cubes line the front, with steamforged backing into them to scrub off the rust-rot (Unit 7 among
+them). Leave the tractor in the bay. Inside it's dim (the light and Jacob's eyes adjust), lit by fungus in mason
+jars: the bar, the still, the tables, Grumm at his corner table, and the stairs up to the offices. Climbing them
+ends the morning.
+
+**Elsewhere:** Water Square, with the Miser-Boab tapped for water sold by the ladle, cages hung from its branches,
+a queue, a tax booth and two Gallows-Gums. The Central and Lower Markets. Scrimp's stall by the old stamp-mills,
+where he'll sell you the intake valve for three bits (he wants it polished). The stamp-mills themselves, their
+stamps lifted on the cams and dropped, THOOM, the district's heartbeat. The Bones: mine towers built like dead
+steamforged, spine legs, a ribcage, a skull carrying the sheave wheel, eyes still glowing. The refinery stacks
+belching yellow-black. The sheriff's station on the Iron-Eye Approach, its lens turning to watch you. The abandoned
+homesteads outside the west wall, and the crater's rim over the roofs to the north-east.
+
+**The people** are the chapter's castes: rat-kin round a refuse pile (one arguing with a chitin-born selling
+grubs), steamforged, suini, the Wolf-Guard, Ironshells, chitin-born, walking the Artery and the lanes, keeping
+stalls, queuing, drinking, working the mills. They get out of the tractor's way, and the ones standing turn
+to stare at the pale one going by. Their words in the chapter's scenes are Canon; the town's passing talk is
+Experimental.
+
+The title screen's **Start in Bleak Flats** skips the road and puts you inside the gate.
 
 ### The old main road
 
@@ -309,7 +353,8 @@ right stick looks, A use, X drink, Y view, B radio, LB Sulphur-Salts; on foot RT
 runs.
 
 For testing, `road.html?debug` exposes `window.__road`, `?q=low|medium|high|ultra` forces a quality
-preset, and `?ratio=1` fixes the pixel ratio.
+preset, `?ratio=1` fixes the pixel ratio, and `?at=city` or `?at=gate` starts inside the town or in the
+queue at the gate.
 
 ## Canon, Plausible, Experimental
 

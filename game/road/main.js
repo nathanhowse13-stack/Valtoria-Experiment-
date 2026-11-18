@@ -146,7 +146,7 @@ S.visited = {};
 
 // ---------- the HUD ----------
 const ui = {};
-for (const id of ['hud', 'title', 'btn-start', 'btn-yard', 'btn-ws', 'place', 'track-fill', 'km', 'compass', 'compass-strip', 'compass-note', 'time', 'heat', 'reticle', 'prompt', 'prompt-key', 'prompt-verb', 'prompt-name', 'prompt-tag', 'whisper', 'thought', 'book', 'toasts', 'mode', 'status', 'gauges', 'menu', 'menu-body', 'menu-close', 'jot', 'jot-thumb', 'jot-ctx', 'jot-kinds', 'jot-text', 'jot-where', 'jot-cancel', 'jot-save', 'end', 'end-card', 'fx-fade', 'fade-line', 'fx-dark', 'fx-glare', 'fx-hurt', 'fx-bleed', 'fx-stress', 'fx-haze', 'fx-swirl', 'pad-note', 'choice']) ui[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = $(id);
+for (const id of ['hud', 'title', 'journey-kicker', 'btn-start', 'btn-town', 'btn-yard', 'btn-ws', 'place', 'track-fill', 'km', 'compass', 'compass-strip', 'compass-note', 'time', 'heat', 'reticle', 'prompt', 'prompt-key', 'prompt-verb', 'prompt-name', 'prompt-tag', 'whisper', 'thought', 'book', 'toasts', 'mode', 'status', 'gauges', 'menu', 'menu-body', 'menu-close', 'jot', 'jot-thumb', 'jot-ctx', 'jot-kinds', 'jot-text', 'jot-where', 'jot-cancel', 'jot-save', 'end', 'end-card', 'fx-fade', 'fade-line', 'fx-dark', 'fx-glare', 'fx-hurt', 'fx-bleed', 'fx-stress', 'fx-haze', 'fx-swirl', 'pad-note', 'choice']) ui[id.replace(/-(.)/g, (_, c) => c.toUpperCase())] = $(id);
 const meters = { health: $('m-health'), water: $('m-water'), stress: $('m-stress') };
 const clockText = () => { const m = Math.floor(S.time / 60) % 1440, hh = Math.floor(m / 60), mm = m % 60; return `${hh % 12 || 12}:${String(mm).padStart(2, '0')}${hh < 12 ? 'am' : 'pm'}`; };
 const hours = () => (S.time / 3600) % 24;
@@ -240,7 +240,10 @@ function updateHud(dt) {
   const place = (c ? c.def.name : placeAt(x, z)).replace(/^./, ch => ch.toUpperCase());
   if (ui.place.textContent !== place) ui.place.textContent = place;
   ui.trackFill.style.width = clamp(z / ARRIVE_Z * 100, 0, 100) + '%';
-  ui.km.textContent = `${clamp((ARRIVE_Z - z) / ARRIVE_Z * LORE_KM, 0, LORE_KM).toFixed(1)} km to Bleak Flats`;
+  // inside the walls the road's done: what's left to count is the pouch
+  const town = !c && z > GATE_AT.z + 2 && inCity(x, z, -2), kick = town ? 'Bleak Flats' : 'To Bleak Flats';
+  if (ui.journeyKicker.textContent !== kick) ui.journeyKicker.textContent = kick;
+  ui.km.textContent = town ? `${GS.bits} bit${GS.bits === 1 ? '' : 's'} in the pouch` : `${clamp((ARRIVE_Z - z) / ARRIVE_Z * LORE_KM, 0, LORE_KM).toFixed(1)} km to Bleak Flats`;
   // the compass: true heading, unless the weed has got into the needle
   const heading = ((-viewYaw() * 180 / Math.PI) % 360 + 360) % 360;
   const wild = S.disoriented > 0 ? Math.sin(S.time * 0.013) * 140 + Math.sin(S.time * 0.051) * 60 : 0;
@@ -1039,7 +1042,7 @@ function frame(dt, raw) {
     amb.swarm = SWARM.points && !cave ? clamp(1 - Math.hypot(p.x - SWARM.x, p.z - SWARM.z) / 60, 0, 1) * (SWARM.scattered > 0 ? 0.13 : 1) : 0;
     amb.canyon = !cave && inCanyon(p.x, p.z);
   }
-  updateAudio(raw, { started: S.started, paused: S.paused && S.started, driving: S.inTractor, speed: Math.abs(tractor.speed), throttle: tractor.thr, stall: tractor.stall, redline: G.redline > 0, cave: !!cave, canyon: amb.canyon, offroad: tractor.offroad,
+  updateAudio(raw, { town: cityWeight(camera.position.x, camera.position.z, 18), started: S.started, paused: S.paused && S.started, driving: S.inTractor, speed: Math.abs(tractor.speed), throttle: tractor.thr, stall: tractor.stall, redline: G.redline > 0, cave: !!cave, canyon: amb.canyon, offroad: tractor.offroad,
     gust: WIND.gust, flies: flySwarms.length > 0, swarm: amb.swarm, wires: amb.wires, live: amb.live, spray: amb.spray, tractorDist: S.inTractor ? 0 : Math.hypot(P.x - tractor.x, P.z - tractor.z), x: here().x, z: here().z });
   ui.prompt.hidden = !target || S.paused;
   if (target) { ui.promptVerb.textContent = valueOf(target.verb); ui.promptName.textContent = valueOf(target.name); ui.promptTag.innerHTML = `<span class="tag ${target.prov[0]}">${TAG_NAME[target.prov[0]]}</span>`; ui.promptKey.textContent = input.mode === 'pad' ? 'A' : 'E'; }
@@ -1134,11 +1137,12 @@ async function boot() {
   try { await renderer.compileAsync(scene, camera); } catch (e) { /* compile on first frame instead */ }
   tick('ready');
   requestAnimationFrame(loop);
-  ui.btnStart.disabled = false; ui.btnStart.textContent = 'Drive out';
+  ui.btnStart.disabled = false; ui.btnStart.textContent = 'Drive out'; ui.btnTown.disabled = false;
   setTimeout(() => { if (input.padBlocked && ui.padNote) { ui.padNote.hidden = false; ui.padNote.textContent = 'Controllers can’t be read inside this preview. Open the downloaded PC copy in Chrome or Edge to play with an Xbox controller.'; } }, 800);
   if (/[?&]from=yard\b/.test(location.search)) begin();
 }
 ui.btnStart.addEventListener('click', begin);
+ui.btnTown.addEventListener('click', () => { startAt = 'city'; begin(); });
 ui.btnYard.addEventListener('click', () => { location.href = window.__YARD_URL || 'yard.html'; });
 ui.btnWs.addEventListener('click', () => setWorkshop(!S.workshop));
 ui.menuClose.addEventListener('click', closeMenu);

@@ -161,7 +161,7 @@ body:not(.workshop) .ws { display: none !important; }
 <div class="fx" id="fx-goggles"></div><div class="fx" id="fx-dark"></div><div class="fx" id="fx-glare"></div><div class="fx" id="fx-haze"></div><div class="fx" id="fx-swirl"></div><div class="fx" id="fx-stress"></div><div class="fx" id="fx-bleed"></div><div class="fx" id="fx-hurt"></div>
 
 <div id="hud" hidden>
-  <div id="journey" class="panel"><div class="kicker">To Bleak Flats</div><div class="place" id="place">The north gate</div><div id="track"><i id="track-fill"></i></div><div class="km" id="km">20.0 km to go</div></div>
+  <div id="journey" class="panel"><div class="kicker" id="journey-kicker">To Bleak Flats</div><div class="place" id="place">The north gate</div><div id="track"><i id="track-fill"></i></div><div class="km" id="km">20.0 km to go</div></div>
   <div id="compass" class="panel"><div id="compass-strip"></div></div>
   <div id="compass-note" hidden></div>
   <div id="clock" class="panel"><b id="time">6:20am</b><div id="heat">41 °C · haze</div></div>
@@ -192,9 +192,10 @@ body:not(.workshop) .ws { display: none !important; }
       <dt>Driving</dt><dd>W/S throttle and brake, A/D steer, mouse looks around, F drink from the canister, G Sulphur-Salts into the intake, R the radio, V seat or chase view, E climb down.</dd>
       <dt>On foot</dt><dd>WASD walk, Shift run, E use, open, work or climb aboard, F drink from the water bag, click or Q to throw a stone. Walk into a cave mouth to go in, and back out into the light to leave.</dd>
       <dt>Controller</dt><dd>RT throttle, LT brake, left stick steers or walks, right stick looks, A use, X drink, Y view, B radio, LB Sulphur-Salts; on foot RT throws a stone and L3 runs. Menu for the notebook.</dd>
+      <dt>In town</dt><dd>Past the gate is Bleak Flats: the Artery, the markets, Water Square, the stamp-mills and the Bones. Find the Rusty Cog; Cogswell’s office is up its stairs. Or start there, with the button below.</dd>
       <dt>Always</dt><dd>C compass, Tab the notebook, N jot an idea, Esc pause. Quality, brightness, field of view and the voice are in the notebook’s Settings.</dd>
     </dl>
-    <div class="actions"><button class="btn primary" id="btn-start" disabled>Loading the Waste…</button><button class="btn" id="btn-yard">Back to the yard</button><button class="btn" id="btn-ws" aria-pressed="false">Workshop view: off</button></div>
+    <div class="actions"><button class="btn primary" id="btn-start" disabled>Loading the Waste…</button><button class="btn" id="btn-town" disabled>Start in Bleak Flats</button><button class="btn" id="btn-yard">Back to the yard</button><button class="btn" id="btn-ws" aria-pressed="false">Workshop view: off</button></div>
     <p class="pad-note" id="pad-note">Got a controller? Connect it and press any button.</p>
     <p class="fine">The Survival Field Guide decides what lives here and how it behaves; the chapters add flavour. Both are tagged Canon. The caves, the main road's ruins and the relics are Experimental. Turn on Workshop view to see which is which.</p>
   </div>
