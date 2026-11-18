@@ -42,7 +42,8 @@ const R = rng(4096), rr = (a, b) => a + (b - a) * R(), pick = (a) => a[Math.floo
 const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
 const add = (o) => { CITY.root.add(o); return o; };
 const mat = (o) => { const m = new THREE.MeshStandardMaterial(o); CITY.mats.push(m); return m; };
-export const PLACES = { cog: null, blade: null, gear: null, doors: [], stamps: null, cams: [], fly: null, sheaves: [], cages: [], eye: null, flare: null, hedge: null, bay: null, grumm: null, scrimp: null, inside: 0 };
+export const PLACES = { cog: null, blade: null, gear: null, doors: [], stamps: null, cams: [], fly: null, sheaves: [], cages: [], eye: null, flare: null, hedge: null, bay: null, grumm: null, scrimp: null, inside: 0,
+  stalls: [], tables: [], bar: null, tap: null, trough: null, door: null, refuse: null, aisles: [], works: [] };
 
 // ground the town mustn't build on (claims, for build.js), and the works' own bookkeeping (they stand in open ground)
 const TAKEN = [];
@@ -102,11 +103,17 @@ function gearGeometry(rOut, rRoot, teeth, depth) {
   g.translate(0, 0, -depth / 2); return planarUV(g, 1.2);
 }
 // a fungus light hung in the air somewhere: the jar, and a pool of its light on whatever's under it
-const POOLS = [];
+const POOLS = [], LINES = [];
+// a string slung from A to B, sagging, with a jar or two of fungus-light hung on it
+function sling(A, B, sag, jars = 1) {
+  const n = 8, P2 = (t) => [lerp(A[0], B[0], t), lerp(A[1], B[1], t) - Math.sin(t * Math.PI) * sag, lerp(A[2], B[2], t)];
+  for (let i = 0; i < n; i++) LINES.push(...P2(i / n), ...P2((i + 1) / n));
+  for (let k = 0; k < jars; k++) { const p = P2((k + 1) / (jars + 1)); CITY.lamps.push({ x: p[0], y: p[1] - 0.3, z: p[2], hung: true }); }
+}
 function jar(x, y, z, drop, floorY = null, k = 1) {
   put('cyl', x, y - drop / 2, z, 0.012, drop, 0.012, CC.RUSTS[4]);
-  put('lit', x, y - drop - 0.13, z, 0.16 * k, 0.22 * k, 0.16 * k, CC.FUNGUS); put('cyl', x, y - drop + 0.0, z, 0.19 * k, 0.05, 0.19 * k, CC.RUSTS[3]);
-  if (floorY !== null) POOLS.push([x, floorY, z, 1.2 + (y - drop - floorY) * 0.4]);
+  put('glow', x, y - drop - 0.13, z, 0.16 * k, 0.22 * k, 0.16 * k, CC.FUNGUS); put('cyl', x, y - drop + 0.0, z, 0.19 * k, 0.05, 0.19 * k, CC.RUSTS[3]);
+  if (floorY !== null) POOLS.push([x, floorY, z, 0.8 + (y - drop - floorY) * 0.2]);
 }
 
 // ---------- the Rusty Cog ----------
@@ -274,11 +281,12 @@ function buildCogInside(cx, cz, fy, z0, z1, sx) {
   for (let k = 0; k < 8; k++) { const z = bz - 5 + k * 1.4; put('cyl', bx + 1.25, fy + 0.38, z, 0.06, 0.76, 0.06, CC.RUSTS[4]); put('cyl', bx + 1.25, fy + 0.8, z, 0.42, 0.07, 0.42, darker); }   // the stools along it
   { const sx2 = cx - 4.6, sz = bz + 7.4; put('cyl', sx2, fy + 1.1, sz, 1.4, 2.2, 1.4, [0.7, 0.42, 0.26]); put('dome', sx2, fy + 2.2, sz, 0.7, 0.6, 0.7, [0.7, 0.42, 0.26]); rod(sx2, fy + 2.7, sz, sx2 + 1.4, fy + 3.6, sz - 1.2, 0.09, [0.62, 0.4, 0.24]); rod(sx2 + 1.4, fy + 3.6, sz - 1.2, sx2 + 0.6, fy + 1.3, sz - 2.4, 0.09, [0.62, 0.4, 0.24]); blockers.push({ x: sx2, z: sz, r: 0.9 }); }   // the still: copper gone green and brown
   blockers.push({ x0: bx - 0.5, x1: bx + 0.65, z0: bz - 6.1, z1: bz + 6.1 }, { x0: cx - 6.2, x1: cx - 5.3, z0: bz - 4.6, z1: bz + 4.6 });
+  PLACES.bar = { x: bx - 0.75, z: bz, y: fy, stool: bx + 1.25 };
   addThing({ id: 'cog:bar', name: 'The bar', verb: 'Ask for a water', x: bx + 1.2, y: fy + 1.2, z: bz, r: 1.8, prov: C2, use: () => { if (S.flags.cogWater) { bark('Another water? It costs. Everything in here costs.', X('the Cog')); return; } S.flags.cogWater = true; sfx.clink(); bark('Signalled the barkeep for a water. It comes in a cup that’s had other things in it, and the barkeep watches my skin, not my money.', C2); } });
   // the tables, and the one in the corner big enough for three men, where Grumm sits
   const tables = [[0.6, -10.5], [2.4, -8.4], [-0.2, -5.0], [2.4, -3.2], [0.4, 4.6], [3.2, 7.6], [0.8, 10.2]];
   for (const [tx, tz] of tables) {
-    const x = cx + tx, z = cz + tz;
+    const x = cx + tx, z = cz + tz; PLACES.tables.push({ x, z, y: fy });
     as(SURF.plank, () => { put('cyl', x, fy + 0.4, z, 0.14, 0.8, 0.14, darker); put('cyl', x, fy + 0.82, z, 1.3, 0.06, 1.3, dark); });
     for (let k = 0; k < 3; k++) { const a = k * 2.1 + tx * 3; put('cyl', x + Math.cos(a) * 1.0, fy + 0.25, z + Math.sin(a) * 1.0, 0.38, 0.5, 0.38, darker); }
     if (R() < 0.7) put('cyl', x + rr(-0.3, 0.3), fy + 0.92, z + rr(-0.3, 0.3), 0.14, 0.18, 0.14, [0.5, 0.36, 0.2]);                // a tankard left
@@ -360,6 +368,7 @@ function buildWaterSquare() {
     put('box', tx + 1.5, y + 0.35, cz, 1.0, 0.7, 2.0, [0.56, 0.52, 0.48], 0, 0, 0, SURF.sheet); put('box', tx + 1.5, y + 0.69, cz, 0.8, 0.02, 1.8, [0.16, 0.14, 0.12]);   // the trough, dark with what's in it
     for (const e of [-1, 1]) for (let k = 0; k < 4; k++) { const x = tx + 3 + k * 2.2; put('cyl', x, y + 0.5, cz + e * 1.1, 0.08, 1.0, 0.08, CC.RUSTS[3]); if (k) put('cyl', x - 1.1, y + 0.95, cz + e * 1.1, 0.05, 2.2, 0.05, CC.RUSTS[4], 0, 0, Math.PI / 2); }
     blockers.push({ x0: tx + 0.9, x1: tx + 2.1, z0: cz - 1.1, z1: cz + 1.1 });
+    PLACES.tap = { x: tx + 2.4, z: cz, y };
     addThing({ id: 'water:tap', name: 'The tap in the boab', verb: 'Look', x: tx + 2.4, y: y + 1, z: cz, r: 1.8, prov: X('Water Square'), use: () => bark('They drove a pipe into the boab and put a wheel on it. One bit a ladle, and the ladle’s on a chain. Drink from a Miser-Boab and you’ll never share again, they say. Explains the tax.', X('Water Square')) });
   }
   // bollards round the boab, a chain slung between them
@@ -383,26 +392,44 @@ function buildWaterSquare() {
 
 // ---------- the markets: stalls in rows along the aisles ----------
 function stall(x, z, yaw, w, d, kind) {
-  const y = h(x, z), c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
-  const tilt = 0.16, topAt = (lz) => y + 2.35 - lz * Math.tan(tilt);
-  for (const lx of [-w / 2, w / 2]) for (const lz of [-d / 2, d / 2]) { const [px, pz] = at(lx, lz), t = topAt(lz); put('cyl', px, (y + t) / 2, pz, 0.08, t - y, 0.08, CC.RUSTS[3]); }
-  put('cloth', x, topAt(0) + 0.03, z, w + 0.5, 0.04, (d + 0.7) / Math.cos(tilt), pick(CC.CLOTHS), tilt, yaw, 0);
-  const [fx, fz] = at(0, d / 2 - 0.32); as(SURF.plank, () => put('box', fx, y + 0.45, fz, w * 0.95, 0.9, 0.62, CC.woodCol(), 0, yaw, 0));
+  const y = h(x, z), c = Math.cos(yaw), s = Math.sin(yaw), at = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c], form = R();
   const front = (lx, up = 0.92) => { const [gx, gz] = at(lx, d / 2 - 0.32); return [gx, y + up, gz]; };
-  // what's for sale
-  for (let k = 0; k < 6; k++) {
-    const [gx, gy, gz] = front(rr(-w * 0.42, w * 0.42)), q = R();
-    if (kind === 'salvage') { if (q < 0.35) put('box', gx, gy + 0.08, gz, rr(0.2, 0.4), 0.16, rr(0.15, 0.3), CC.wallCol(0.3), 0, R() * 3, 0, SURF.sheet); else if (q < 0.65) put('cyl', gx, gy + 0.06, gz, rr(0.18, 0.3), 0.06, rr(0.18, 0.3), CC.RUSTS[q < 0.5 ? 2 : 4]); else put('cyl', gx, gy + 0.12, gz, 0.07, 0.24, 0.07, [0.6, 0.48, 0.26]); }
-    else { if (q < 0.35) put('box', gx, gy + 0.1, gz, 0.3, 0.2, 0.3, CC.woodCol(), 0, R(), 0, SURF.plank); else if (q < 0.7) put('cyl', gx, gy + 0.13, gz, 0.13, 0.26, 0.13, pick([[0.5, 0.42, 0.3], [0.4, 0.5, 0.3], [0.56, 0.3, 0.2], [0.7, 0.66, 0.52]])); else put('dome', gx, gy - 0.02, gz, 0.22, 0.2, 0.22, pick(CC.CLOTHS)); }
+  const goods = (n, up) => {
+    for (let k = 0; k < n; k++) {
+      const [gx, gy, gz] = front(rr(-w * 0.42, w * 0.42), up), q = R();
+      if (kind === 'salvage') { if (q < 0.35) put('box', gx, gy + 0.08, gz, rr(0.2, 0.4), 0.16, rr(0.15, 0.3), CC.wallCol(0.3), 0, R() * 3, 0, SURF.sheet); else if (q < 0.6) put('cyl', gx, gy + 0.06, gz, rr(0.18, 0.34), 0.06, rr(0.18, 0.34), CC.RUSTS[q < 0.5 ? 2 : 4]); else if (q < 0.8) put('cyl', gx, gy + 0.12, gz, 0.07, 0.24, 0.07, [0.6, 0.48, 0.26]); else put('cyl', gx, gy + 0.1, gz, 0.26, 0.2, 0.26, [0.18, 0.16, 0.15]); }
+      else { if (q < 0.3) put('box', gx, gy + 0.1, gz, 0.32, 0.2, 0.32, CC.woodCol(), 0, R(), 0, SURF.plank); else if (q < 0.55) put('cyl', gx, gy + 0.13, gz, 0.13, 0.26, 0.13, pick([[0.5, 0.42, 0.3], [0.3, 0.5, 0.3], [0.62, 0.3, 0.16], [0.75, 0.68, 0.5]])); else if (q < 0.8) put('dome', gx, gy - 0.02, gz, 0.24, 0.22, 0.24, pick([[0.62, 0.5, 0.32], [0.5, 0.34, 0.22], [0.7, 0.62, 0.42], [0.4, 0.28, 0.2]])); else for (let i = 0; i < 4; i++) put('box', gx + (i - 1.5) * 0.08, gy + 0.18, gz, 0.02, 0.36, 0.02, [0.5, 0.36, 0.22], 0.3, 0, 0); }   // jars, sacks, tubers; skewers of grubs
+    }
+  };
+  { const [kx, kz] = at(0, -d / 2 + 0.55), [cx2, cz2] = at(rr(-w * 0.3, w * 0.3), d / 2 + 0.75); PLACES.stalls.push({ x, z, yaw, keeper: [kx, kz], customer: [cx2, cz2], kind, ground: form < 0.14 }); }
+  if (form < 0.14) {
+    // a spread on the ground under a parasol: a mat, the goods on it, a stool
+    put('cloth', x, y + 0.02, z, w, 0.02, d, pick(CC.CLOTHS), 0, yaw, 0); goods(7, 0.05);
+    put('cyl', x - c * w * 0.4, y + 1.2, z + s * w * 0.4, 0.05, 2.4, 0.05, CC.RUSTS[3]); put('dome', x - c * w * 0.4, y + 2.25, z + s * w * 0.4, 1.4, 0.45, 1.4, pick(CC.BRIGHT));
+    put('cyl', x + rr(-0.5, 0.5), y + 0.2, z - c * 0.2, 0.32, 0.4, 0.32, CC.woodCol());
+    if (R() < 0.4) CITY.lamps.push({ x: x - c * w * 0.4, y: y + 1.9, z: z + s * w * 0.4, hung: true });
+    blockers.push({ x, z, r: Math.max(w, d) * 0.42 }); return;
   }
-  for (let k = 0; k < 3; k++) { const [gx, gz] = at(rr(-w * 0.4, w * 0.4), d / 2 + 0.05); put('box', gx, y + 1.85, gz, 0.1, rr(0.3, 0.55), 0.1, kind === 'salvage' ? CC.RUSTS[4] : pick([[0.42, 0.22, 0.12], [0.5, 0.4, 0.2], [0.36, 0.3, 0.18]])); }   // hung from the frame
+  const tilt = rr(0.1, 0.2), top0 = rr(2.2, 2.75), topAt = (lz) => y + top0 - lz * Math.tan(tilt);
+  for (const lx of [-w / 2, w / 2]) for (const lz of [-d / 2, d / 2]) { const [px, pz] = at(lx, lz), t = topAt(lz); put('cyl', px, (y + t) / 2, pz, 0.08, t - y, 0.08, CC.RUSTS[3]); }
+  const awning = R() < 0.75 ? pick(CC.BRIGHT) : pick(CC.CLOTHS);
+  put('cloth', x, topAt(0) + 0.03, z, w + 0.5, 0.04, (d + 0.7) / Math.cos(tilt), awning, tilt, yaw, 0);
+  { const [vx, vz] = at(0, d / 2 + 0.38); for (let i = 0; i < 5; i++) { const [ex, ez] = at((i - 2) * (w + 0.4) / 5, d / 2 + 0.38); put('cloth', ex, topAt(d / 2 + 0.38) - 0.12, ez, (w + 0.4) / 5.4, 0.24, 0.02, awning.map(v => v * 0.85), 0, yaw, 0); } void vx; void vz; }   // its fringe
+  const [fx, fz] = at(0, d / 2 - 0.32); as(SURF.plank, () => put('box', fx, y + 0.45, fz, w * 0.95, 0.9, 0.62, CC.woodCol(), 0, yaw, 0));
+  goods(7, 0.92);
+  if (form > 0.6) { const [bx2, bz2] = at(0, -d / 2 + 0.3); as(SURF.plank, () => { put('box', bx2, y + 1.0, bz2, w * 0.9, 0.05, 0.4, CC.woodCol(), 0, yaw, 0); put('box', bx2, y + 1.6, bz2, w * 0.9, 0.05, 0.4, CC.woodCol(), 0, yaw, 0); }); for (let i = 0; i < 6; i++) { const [gx, gz] = at(rr(-w * 0.4, w * 0.4), -d / 2 + 0.3); put('cyl', gx, y + (i % 2 ? 1.12 : 1.72), gz, 0.12, 0.22, 0.12, pick([[0.3, 0.5, 0.3], [0.62, 0.3, 0.16], [0.75, 0.68, 0.5], [0.5, 0.42, 0.3]])); } }   // shelves at the back
+  for (let k = 0; k < 4; k++) { const [gx, gz] = at(rr(-w * 0.42, w * 0.42), d / 2 + 0.05); put('box', gx, topAt(d / 2) - 0.45, gz, 0.1, rr(0.3, 0.6), 0.1, kind === 'salvage' ? CC.RUSTS[4] : pick([[0.42, 0.22, 0.12], [0.5, 0.4, 0.2], [0.36, 0.3, 0.18], [0.6, 0.5, 0.3]])); }   // hung from the frame
   for (let k = Math.floor(R() * 3); k > 0; k--) { const [gx, gz] = at(rr(-w / 2, w / 2), -d / 2 - 0.4); put('box', gx, y + 0.3, gz, 0.6, 0.6, 0.6, CC.woodCol(), 0, R(), 0, SURF.plank); }
   if (kind === 'salvage' && R() < 0.5) { const [gx, gz] = at(w / 2 + 0.8, 0); put('dome', gx, y - 0.1, gz, 0.9, 0.6, 0.9, CC.RUSTS[1]); }                        // a heap of it on the ground
-  if (R() < 0.45) CITY.lamps.push({ x, y: y + 2.1, z, hung: true });
+  if (R() < 0.5) { const [lx2, lz2] = at(0, d / 2); CITY.lamps.push({ x: lx2, y: topAt(d / 2) - 0.3, z: lz2, hung: true }); }
   blockers.push({ x, z, r: Math.max(w, d) * 0.5 });
 }
 function marketRows(x0, x1, rows, kind, gaps = 0.14) {
+  { const zs = rows.map(r => r[0]).sort((a, b) => a - b); for (let i = 0; i < zs.length - 1; i++) if (zs[i + 1] - zs[i] > 4) PLACES.aisles.push({ z: (zs[i] + zs[i + 1]) / 2, x0: x0 + 1, x1: x1 - 1 }); }
   for (const [z, yaw] of rows) for (let x = x0 + 1.8; x < x1 - 1.6; x += rr(4.3, 5.2)) { if (R() < gaps) continue; stall(x, z, yaw, rr(2.7, 3.4), rr(1.8, 2.2), kind); }
+  // strings of jars and rags across the aisles, from row to row
+  const zs = rows.map(r => r[0]).sort((a, b) => a - b);
+  for (let i = 0; i < zs.length - 1; i++) { if (zs[i + 1] - zs[i] < 4) continue; for (let x = x0 + 3; x < x1 - 2; x += rr(5, 8)) { const ya = h(x, zs[i]) + rr(2.7, 3.2), yb = h(x, zs[i + 1]) + rr(2.7, 3.2); sling([x, ya, zs[i]], [x + rr(-1.5, 1.5), yb, zs[i + 1]], rr(0.5, 1.1), R() < 0.6 ? 1 : 2); } }
 }
 function buildMarkets() {
   { const s = SITE.market, ax = arteryX(s.z), x0 = ax + ARTERY_HALF + 2.5, x1 = CASTE_W - 4, lz = LANES[3].z;
@@ -496,54 +523,82 @@ function buildStampMills() {
 }
 
 // ---------- the Bones: mine towers built like dead steamforged ----------
+// Each stands over its shaft like a skeleton: four legs that are spines, down to the ground, meeting at a pelvis;
+// above it a spine and a ribcage, collarbones, and the head on top, its eyes put out but something still glowing in
+// them; horns off the skull carry the sheave wheel the winding cable runs over.
 function buildBones() {
-  const bone = new THREE.MeshStandardMaterial({ map: T.iron.c, normalMap: T.iron.n, color: 0x4c4642, roughness: 0.55, metalness: 0.8 }), parts = [], OFF = [[-1, 0], [-1, 0], [0, -1], [0, -1]];
+  const bone = new THREE.MeshStandardMaterial({ map: T.iron.c, normalMap: T.iron.n, color: 0x4c4642, roughness: 0.55, metalness: 0.8 }), parts = [], OFF = [[-1, 0], [-1, 0], [-1, 0], [0, -1]];
+  const L3 = (A, B, t) => [lerp(A[0], B[0], t), lerp(A[1], B[1], t), lerp(A[2], B[2], t)];
   const seg = (A, B, r0, r1, sides = 7) => parts.push([new THREE.CylinderGeometry(r1, r0, 1, sides, 1, true), rodMX(A, B)]);
+  // a vertebra from A to B: its body, the disc on top, a spine sticking out (dir), and the two wings either side
+  const vert = (A, B, r, dir, wings = false) => {
+    const B2 = L3(A, B, 0.8); seg(A, B2, r, r * 0.92);
+    parts.push([new THREE.CylinderGeometry(r * 1.4, r * 1.4, 0.18, 9), rodMX(B2, L3(A, B, 0.94))]);
+    const m = L3(A, B, 0.5), yaw = Math.atan2(dir[0], dir[2]);
+    parts.push([new THREE.BoxGeometry(0.16, r * 0.9, r * 2.2), MX(m[0] + dir[0] * r * 1.4, m[1] - r * 0.2, m[2] + dir[2] * r * 1.4, -0.5, yaw, 0)]);
+    if (wings) parts.push([new THREE.BoxGeometry(r * 3.6, 0.14, 0.2), MX(m[0], m[1] + r * 0.2, m[2], 0, yaw, 0)]);
+  };
   SITE.bones.forEach(([bx, bz, ht], bi) => {
-    const y = h(bx, bz), spread = ht * 0.16, top = y + ht;
-    take(bx - spread - 2, bz - spread - 2, bx + spread + 2, bz + spread + 2);
-    const legs = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => ({ a, b }));
-    const at = (L, t) => [bx + L.a * spread * (1 - t * 0.78), lerp(y - 0.5, top, t), bz + L.b * spread * (1 - t * 0.78)];
-    for (const L of legs) {
-      const n = Math.round(ht / 1.35);
-      for (let k = 0; k < n; k++) {
-        const A = at(L, k / n), B = at(L, (k + 0.78) / n), C = at(L, (k + 0.89) / n);
-        seg(A, B, 0.42, 0.36);                                                                       // the body of a vertebra
-        parts.push([new THREE.CylinderGeometry(0.56, 0.56, 0.14, 8), rodMX(B, C)]);                 // the disc
-        const out = v3(L.a, 0, L.b).normalize();                                                       // and its spine, sticking out
-        parts.push([new THREE.BoxGeometry(0.14, 0.5, 0.75), MX(B[0] + out.x * 0.55, B[1] - 0.1, B[2] + out.z * 0.55, 0, Math.atan2(out.x, out.z), 0)]);
-      }
-      blockers.push({ x: at(L, 0)[0], z: at(L, 0)[2], r: 0.7 });
+    const y = h(bx, bz), base = ht * 0.16, hipY = y + ht * 0.5, hipS = base * 0.32, chestR = ht * 0.085, neckY = y + ht * 0.86, top = y + ht;
+    const fx = Math.sign(arteryX(bz) - bx) || 1, alongX = OFF[bi][0] !== 0;                                            // facing the street; the cable away along x, or along z
+    take(bx - base - 2, bz - base - 2, bx + base + 2, bz + base + 2);
+    // the legs: four spines, bowed a little outward, down into the ground at the corners
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const n = Math.max(10, Math.round((hipY - y) / 1.5)), dir = [a / Math.SQRT2, 0, b / Math.SQRT2];
+      const at = (t) => { const s2 = lerp(base, hipS, t) + Math.sin(t * Math.PI) * base * 0.12; return [bx + a * s2, lerp(y - 0.4, hipY, t), bz + b * s2]; };
+      for (let k = 0; k < n; k++) vert(at(k / n), at((k + 1) / n), lerp(0.62, 0.42, k / n), dir);
+      blockers.push({ x: bx + a * base, z: bz + b * base, r: 0.8 });
+      // the bracing between the legs: ribs, at a third and two-thirds of the way up
     }
-    // ribs between the legs, curving out and down like a chest's, a set every few metres
-    for (let yy = 7; yy < ht - 6; yy += 6.2) {
-      const t = yy / ht;
-      for (let f = 0; f < 4; f++) {
-        const A = at(legs[f], t), B = at(legs[(f + 1) % 4], t), mx = (A[0] + B[0]) / 2, mz = (A[2] + B[2]) / 2, out = v3(mx - bx, 0, mz - bz).normalize(), bow = spread * (1 - t * 0.78) * 0.32;
-        let prev = A;
-        for (let i = 1; i <= 5; i++) { const u = i / 5, w = Math.sin(u * Math.PI), p = [lerp(A[0], B[0], u) + out.x * bow * w, lerp(A[1], B[1], u) - w * 1.2, lerp(A[2], B[2], u) + out.z * bow * w]; seg(prev, p, 0.2, 0.17, 6); prev = p; }
+    for (const t of [0.34, 0.68]) {
+      const yy = lerp(y, hipY, t), s2 = lerp(base, hipS, t) + Math.sin(t * Math.PI) * base * 0.12, C = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [bx + a * s2, yy, bz + b * s2]);
+      for (let k = 0; k < 4; k++) { const A = C[k], B = C[(k + 1) % 4], mid = L3(A, B, 0.5), o = [mid[0] - bx, 0, mid[2] - bz], ol = Math.hypot(o[0], o[2]) || 1; let prev = A; for (let i = 1; i <= 4; i++) { const u = i / 4, w = Math.sin(u * Math.PI), p = [lerp(A[0], B[0], u) + o[0] / ol * w * s2 * 0.25, yy - w * 0.9, lerp(A[2], B[2], u) + o[2] / ol * w * s2 * 0.25]; seg(prev, p, 0.24, 0.2, 6); prev = p; } }
+    }
+    // the pelvis, where the legs meet: a bowl of plate and a ring of bone
+    parts.push([new THREE.TorusGeometry(hipS * 1.5, 0.42, 7, 18), MX(bx, hipY, bz, Math.PI / 2, 0, 0)], [new THREE.CylinderGeometry(hipS * 1.3, hipS * 0.8, 1.6, 12, 1, true), MX(bx, hipY - 0.7, bz)]);
+    // the spine up from it, behind the ribs; the ribs, curving round from the spine toward the front, the breastbone gone
+    const sp = (yy) => [bx - fx * chestR * 0.55, yy, bz];
+    const ns = Math.round((neckY - hipY) / 1.35);
+    for (let k = 0; k < ns; k++) vert(sp(lerp(hipY, neckY, k / ns)), sp(lerp(hipY, neckY, (k + 1) / ns)), 0.55, [-fx, 0, 0], true);
+    for (let i = 0; i < 7; i++) {
+      const t = i / 6, ly = lerp(y + ht * 0.6, y + ht * 0.82, t), rho = chestR * (0.72 + 0.34 * Math.sin((0.25 + t * 0.75) * Math.PI)), S0 = sp(ly), C = [S0[0] + fx * rho, ly, S0[2]];
+      for (const side of [-1, 1]) {
+        let prev = S0;
+        for (let k = 1; k <= 7; k++) { const phi = k / 7 * Math.PI * 0.8, p = [C[0] - fx * rho * Math.cos(phi), ly - rho * 0.32 * (1 - Math.cos(phi)) / 2, C[2] + side * rho * Math.sin(phi)]; seg(prev, p, 0.26, 0.2, 6); prev = p; }
       }
     }
-    // the head on top: a steamforged's, its faceplate split, the eyes put out, but something still glowing in them
-    parts.push([new THREE.BoxGeometry(3.4, 2.6, 3.0), MX(bx, top + 1.3, bz)], [new THREE.BoxGeometry(2.8, 0.9, 0.6), MX(bx, top + 0.45, bz + 1.5, 0.2, 0, 0)], [new THREE.BoxGeometry(0.2, 2.2, 0.2), MX(bx + 0.4, top + 1.4, bz + 1.52, 0, 0, 0.3)]);
-    for (const e of [-1, 1]) { parts.push([new THREE.CylinderGeometry(0.38, 0.46, 2.0, 10), MX(bx + e * 1.25, top + 3.4, bz - 0.7)]); put('lit', bx + e * 0.72, top + 1.55, bz + 1.52, 0.5, 0.32, 0.04, [2.6, 0.7, 0.22]); }
-    for (const e of [-1, 1]) W.smoke.push({ x: bx + e * 1.25, y: top + 4.5, z: bz - 0.7, rate: 0.5, mat: STEAM, size: 0.8, life: 6 });
-    // the sheave wheel over the head, and the winding cables running down to the engine house
-    const sh = new THREE.Group(); sh.position.set(bx, top + 5.6, bz + 0.4); G.scene.add(sh);
-    const sv = [[new THREE.TorusGeometry(2.0, 0.16, 6, 28), new THREE.Matrix4()]]; for (let k = 0; k < 8; k++) sv.push([new THREE.BoxGeometry(0.1, 3.9, 0.1), MX(0, 0, 0, 0, 0, k * Math.PI / 8)]);
-    const wheel = mesh(merge(sv), M.iron); wheel.rotation.y = Math.PI / 2; sh.add(wheel); PLACES.sheaves.push(wheel);
-    parts.push([new THREE.BoxGeometry(0.3, 2.6, 0.3), MX(bx - 0.4, top + 4.0, bz + 0.4)], [new THREE.BoxGeometry(0.3, 2.6, 0.3), MX(bx + 0.4, top + 4.0, bz + 0.4)]);
-    const [ox, oz] = OFF[bi], wx = bx + ox * (spread + 16), wz = bz + (oz ? oz * (spread + 14) : -6), wy = h(wx, wz), face = ox ? -ox : 0;
-    put('box', wx, wy + 2.2, wz, 7, 4.4, 6, CC.wallCol(0.25), 0, 0, 0, SURF.corr); put('box', wx, wy + 4.5, wz, 7.6, 0.1, 6.6, [0.46, 0.38, 0.33], 0, 0, 0.1, SURF.corr); if (face) put('dark', wx + face * 3.52, wy + 1.4, wz, 0.06, 2.6, 2.4, CC.DARK); else put('dark', wx, wy + 1.4, wz + 3.02, 2.4, 2.6, 0.06, CC.DARK);
+    // collarbones, and the stumps of the shoulders
+    { const cy = neckY - 0.3, c0 = [bx + fx * chestR * 0.1, cy, bz]; for (const side of [-1, 1]) { const end = [c0[0], cy + 0.8, bz + side * chestR * 1.25]; seg(c0, end, 0.34, 0.3); parts.push([new THREE.SphereGeometry(0.8, 9, 7), MX(end[0], end[1], end[2])]); seg(end, [end[0] + fx * 0.6, end[1] - 2.2, end[2] + side * 0.4], 0.42, 0.3); } }
+    // the neck, and the head: a steamforged's, the faceplate split, the jaw hung open
+    for (let k = 0; k < 3; k++) vert(sp(lerp(neckY, top - 0.2, k / 3)), sp(lerp(neckY, top - 0.2, (k + 1) / 3)), 0.45, [-fx, 0, 0]);
+    const hx = bx, hy = top + 1.9;
+    parts.push([new THREE.BoxGeometry(4.2, 3.4, 4.0), MX(hx, hy, bz)], [new THREE.BoxGeometry(0.8, 2.6, 4.2), MX(hx - fx * 0.2, hy + 1.5, bz)]);   // the head, and its crest
+    parts.push([new THREE.BoxGeometry(1.3, 1.0, 3.4), MX(hx + fx * 1.6, hy - 2.1, bz, 0, 0, -fx * 0.45)]);                            // the jaw, hanging
+    parts.push([new THREE.BoxGeometry(0.22, 2.8, 0.22), MX(hx + fx * 2.08, hy + 0.2, bz + 0.5, 0.25, 0, 0)]);                         // the split down the faceplate
+    for (const side of [-1, 1]) {
+      put('lit', hx + fx * 2.03, hy + 0.5, bz + side * 1.05, 0.06, 0.55, 0.85, [2.8, 0.75, 0.22]);                                   // what's left glowing in its eyes
+      parts.push([new THREE.CylinderGeometry(0.4, 0.5, 2.2, 10), MX(hx - fx * 1.2, hy + 2.6, bz + side * 1.5)]);                       // the stacks on its shoulders
+      W.smoke.push({ x: hx - fx * 1.2, y: hy + 3.8, z: bz + side * 1.5, rate: 0.45, mat: STEAM, size: 0.8, life: 6 });
+      if (alongX) seg([hx, hy + 1.6, bz + side * 1.6], [hx + fx * 0.3, hy + 5.6, bz + side * 1.0], 0.3, 0.16);                       // the horns that carry the wheel
+      else seg([hx + side * 1.8, hy + 1.6, bz], [hx + fx * 0.3 + side * 1.0, hy + 5.6, bz], 0.3, 0.16);
+    }
+    const sh = new THREE.Group(); sh.position.set(hx + fx * 0.3, hy + 5.4, bz); G.scene.add(sh);
+    const sv = [[new THREE.TorusGeometry(2.2, 0.18, 6, 30), new THREE.Matrix4()], [new THREE.CylinderGeometry(0.3, 0.3, 0.5, 8).rotateX(Math.PI / 2), new THREE.Matrix4()]]; for (let k = 0; k < 8; k++) sv.push([new THREE.BoxGeometry(0.12, 4.3, 0.12), MX(0, 0, 0, 0, 0, k * Math.PI / 8)]);
+    const wheel = mesh(merge(sv), M.iron); wheel.rotation.y = alongX ? 0 : Math.PI / 2; sh.add(wheel); PLACES.sheaves.push(wheel);
+    parts.push([new THREE.CylinderGeometry(0.16, 0.16, 2.4, 8), MX(hx + fx * 0.3, hy + 5.4, bz, alongX ? Math.PI / 2 : 0, 0, alongX ? 0 : Math.PI / 2)]);
+    // the winding house the cable runs down to, and the shaft under the tower: black, with a collar of sleepers
+    const [ox, oz] = OFF[bi], wx = bx + ox * (base + 16), wz = bz + (oz ? oz * (base + 14) : -6), wy = h(wx, wz), face = ox ? -ox : 0;
+    put('box', wx, wy + 2.2, wz, 7, 4.4, 6, CC.wallCol(0.25), 0, 0, 0, SURF.corr); put('box', wx, wy + 4.5, wz, 7.6, 0.1, 6.6, [0.46, 0.38, 0.33], 0, 0, 0.1, SURF.corr);
+    if (face) put('dark', wx + face * 3.52, wy + 1.4, wz, 0.06, 2.6, 2.4, CC.DARK); else put('dark', wx, wy + 1.4, wz + 3.02, 2.4, 2.6, 0.06, CC.DARK);
+    put('cyl', wx, wy + 5.6, wz, 0.4, 2.4, 0.4, CC.RUSTS[3]); W.smoke.push({ x: wx, y: wy + 7, z: wz, rate: 0.4, mat: M.smoke, size: 0.5, near: 300, life: 8 });
     blockers.push({ x0: wx - 3.5, x1: wx + 3.5, z0: wz - 3, z1: wz + 3 }); take(wx - 4, wz - 3.5, wx + 4, wz + 3.5);
-    CITY.cables = CITY.cables || []; CITY.cables.push([bx, top + 5.6 + 2.0, bz + 0.4, wx, wy + 3.4, wz], [bx, top + 5.6 - 2.0, bz + 0.4, bx, y - 1, bz + 0.4]);
-    // the shaft under it: a black square in the ground with a collar of sleepers round it
-    put('box', bx, y - 0.02, bz, 3.2, 0.06, 3.2, [0.02, 0.018, 0.016]); for (const e of [-1, 1]) { put('box', bx + e * 1.8, y + 0.15, bz, 0.4, 0.3, 4, CC.woodCol(), 0, 0, 0, SURF.plank); put('box', bx, y + 0.15, bz + e * 1.8, 4, 0.3, 0.4, CC.woodCol(), 0, 0, 0, SURF.plank); }
-    for (const e of [-1, 1]) CITY.lamps.push({ x: bx + e * spread * 0.4, y: y + ht * 0.45, z: bz + spread * 0.4 });
+    CITY.cables = CITY.cables || []; CITY.cables.push([sh.position.x, sh.position.y + 2.2, bz, wx, wy + 3.6, wz], [sh.position.x, sh.position.y - 2.2, bz, sh.position.x, y - 1, bz]);
+    put('box', bx, y - 0.02, bz, 3.4, 0.06, 3.4, [0.02, 0.018, 0.016]); for (const e of [-1, 1]) { put('box', bx + e * 1.9, y + 0.15, bz, 0.4, 0.3, 4.2, CC.woodCol(), 0, 0, 0, SURF.plank); put('box', bx, y + 0.15, bz + e * 1.9, 4.2, 0.3, 0.4, CC.woodCol(), 0, 0, 0, SURF.plank); }
+    for (const e of [-1, 1]) CITY.lamps.push({ x: bx + e * hipS * 1.5, y: hipY - 0.6, z: bz + hipS });
   });
   const m = mesh(planarUV(merge(parts), 1.6), bone); m.receiveShadow = true; G.scene.add(m);
   const b1 = SITE.bones[1];
-  addThing({ id: 'bones', name: 'The Bones', verb: 'Look up', x: b1[0] - 8, y: h(b1[0], b1[1]) + 2, z: b1[1] - 9, r: 7, prov: X('the Bones'), use: () => bark('The Bones. Mine towers built out of steamforged too far gone to scrub: spines for legs, ribs for bracing, a head on top with the eyes put out. Something in the eyes still glows. The cables still run. The city stands on its dead, and the dead are still at work.', X('the Bones')) });
+  addThing({ id: 'bones', name: 'The Bones', verb: 'Look up', x: b1[0] - 9, y: h(b1[0], b1[1]) + 2, z: b1[1] - 10, r: 7, prov: X('the Bones'), use: () => bark('The Bones. Mine towers built out of steamforged too far gone to scrub: spines for legs, a ribcage round the shaft, a head on top with the eyes put out. Something in the eyes still glows. The cables still run. The city stands on its dead, and the dead are still at work.', X('the Bones')) });
 }
 
 // ---------- the refinery: stacks belching yellow-black, tanks, a flare ----------
@@ -576,18 +631,25 @@ function buildSheriff() {
   const lz = LANES[5].z, x0 = -36, x1 = -16, z1 = lz - 5.5, z0 = z1 - 21, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, y = h(cx, cz), grey = [0.38, 0.37, 0.36];
   const edge = arteryX(cz) - ARTERY_HALF;
   take(x0 - 4.5, z0 - 1, x1, z1); take(x1, z0, edge, z1 + 1, true); patch(x1, z0, edge - 0.3, z1 + 1, 0.95);
-  put('box', cx, y + 4.6, cz, x1 - x0, 9.2, z1 - z0, grey, 0, 0, 0, SURF.sheet); put('box', cx, y + 9.45, cz, x1 - x0 + 0.8, 0.5, z1 - z0 + 0.8, [0.3, 0.29, 0.28], 0, 0, 0, SURF.sheet);
-  for (let k = 0; k < 8; k++) { const z = z0 + 2 + k * (z1 - z0 - 4) / 7; for (const yy of [3, 6.8]) put('dark', x1 + 0.03, y + yy, z, 0.06, 1.3, 0.22, CC.DARK); }   // slits, not windows
-  for (let k = 0; k < 7; k++) put('dark', x0 + 2 + k * (x1 - x0 - 4) / 6, y + 6.8, z1 + 0.03, 0.22, 1.3, 0.06, CC.DARK);
+  as(SURF.plaster, () => { put('box', cx, y + 4.6, cz, x1 - x0, 9.2, z1 - z0, [0.62, 0.6, 0.57]); put('box', cx, y + 9.45, cz, x1 - x0 + 0.8, 0.5, z1 - z0 + 0.8, [0.5, 0.49, 0.47]); });
+  put('box', cx, y + 0.6, cz, x1 - x0 + 0.3, 1.2, z1 - z0 + 0.3, [0.32, 0.3, 0.29], 0, 0, 0, SURF.sheet);                          // the plinth, black with the street
+  for (const yy of [3.4, 6.2]) put('box', cx, y + yy, cz, x1 - x0 + 0.1, 0.12, z1 - z0 + 0.1, [0.4, 0.38, 0.36], 0, 0, 0, SURF.sheet);   // the courses of iron plate behind the render
+  for (let x = x0 + 0.5; x <= x1 - 0.5; x += 1.6) for (const zz of [z0, z1]) put('cyl', x, y + 10.1, zz, 0.08, 0.9, 0.08, [0.22, 0.21, 0.2]);
+  for (let z = z0 + 0.5; z <= z1 - 0.5; z += 1.6) put('cyl', x1, y + 10.1, z, 0.08, 0.9, 0.08, [0.22, 0.21, 0.2]);                  // spikes along the parapet
+  for (let k = 0; k < 8; k++) { const z = z0 + 2 + k * (z1 - z0 - 4) / 7; for (const yy of [2.6, 7.4]) { put('dark', x1 + 0.03, y + yy, z, 0.06, 1.3, 0.3, CC.DARK); put('cyl', x1 + 0.08, y + yy, z, 0.04, 1.3, 0.04, [0.2, 0.19, 0.18]); } }   // slits, not windows, and barred
+  for (let k = 0; k < 7; k++) { const x = x0 + 2 + k * (x1 - x0 - 4) / 6; put('dark', x, y + 7.4, z1 + 0.03, 0.3, 1.3, 0.06, CC.DARK); put('cyl', x, y + 7.4, z1 + 0.08, 0.04, 1.3, 0.04, [0.2, 0.19, 0.18]); }
+  CITY.lamps.push({ x: x1 + 0.5, y: y + 3.6, z: cz - 2.1 }, { x: x1 + 0.5, y: y + 3.6, z: cz + 2.1 });
   // the front: iron doors up three steps, a trough where the Wolf-Guard drink, the board
   put('box', x1 + 0.08, y + 1.6, cz, 0.16, 3.2, 3.0, [0.24, 0.23, 0.22], 0, 0, 0, SURF.sheet); for (const e of [-1, 1]) put('box', x1 + 0.2, y + 1.6, cz + e * 0.75, 0.06, 3.0, 0.08, [0.16, 0.15, 0.14]);
   for (let k = 0; k < 3; k++) put('box', x1 + 0.6 + k * 0.4, y + 0.15 + (2 - k) * 0.25 - 0.1, cz, 0.4, 0.3 + (2 - k) * 0.5, 4.2, [0.5, 0.48, 0.45], 0, 0, 0, SURF.sheet);
   put('box', x1 + 1.6, y + 0.45, cz + 5.5, 0.9, 0.9, 3.2, [0.34, 0.32, 0.3], 0, 0, 0, SURF.sheet); put('box', x1 + 1.6, y + 0.82, cz + 5.5, 0.7, 0.04, 3.0, [0.12, 0.11, 0.1]);
   blockers.push({ x0: x1 + 1.1, x1: x1 + 2.1, z0: cz + 3.9, z1: cz + 7.1 });
+  PLACES.trough = { x: x1 + 2.6, z: cz + 5.5, y }; PLACES.door = { x: x1 + 2.0, z: cz - 2.2, y };
   board([['SHERIFF', 110, 0.4], ['PROCESSING · DETENTION · TAXES', 40, 0.78]], 6.4, 1.6, { bg: '#1a1816', fg: '#d8c8b0', edge: '#6a5a4a' }, x1 + 0.12, y + 4.4, cz);
   // the tower at the corner, and its lens: the Iron-Eye, turning over the street
   const tx = x1 - 3, tz = z1 - 3;
-  put('box', tx, y + 9.5, tz, 5.4, 19, 5.4, [0.34, 0.33, 0.32], 0, 0, 0, SURF.sheet); put('box', tx, y + 19.2, tz, 6.2, 0.4, 6.2, [0.28, 0.27, 0.26], 0, 0, 0, SURF.sheet);
+  as(SURF.plaster, () => put('box', tx, y + 9.5, tz, 5.4, 19, 5.4, [0.58, 0.56, 0.53])); put('box', tx, y + 19.2, tz, 6.2, 0.4, 6.2, [0.28, 0.27, 0.26], 0, 0, 0, SURF.sheet);
+  for (let k = 1; k < 6; k++) put('box', tx, y + k * 3.2, tz, 5.5, 0.12, 5.5, [0.4, 0.38, 0.36], 0, 0, 0, SURF.sheet);
   const eye = new THREE.Group(); eye.position.set(tx, y + 20.8, tz); add(eye);
   const hood = mesh(new THREE.CylinderGeometry(1.5, 1.7, 2.4, 20, 1, true).rotateZ(Math.PI / 2), M.iron); hood.position.x = 1.0; eye.add(hood);
   eye.add(mesh(new THREE.BoxGeometry(2.4, 2.6, 2.6), M.ironshell));
@@ -675,13 +737,22 @@ function buildCrater() {
   for (let k = 0; k < 7; k++) { const a = -1.05 + k * 0.17, r = c.r - 4, x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r, y = farHeight(x, z) + lift(r, a); put('box', x, y + 7, z, 1.6, 14, 1.6, CC.RUSTS[4], 0, a, 0, SURF.sheet); put('lit', x, y + 14.6, z, 0.9, 0.9, 0.9, [2.6, 1.5, 0.6]); }
 }
 
+// a refuse pile in the gate yard, on the left as you come in, where the rat-kin forage
+function buildRefuse() {
+  const x = 12.5, z = 1863, y = h(x, z);
+  for (let k = 0; k < 16; k++) put(R() < 0.6 ? 'box' : 'cyl', x + rr(-2, 2), y + rr(0, 0.7), z + rr(-1.6, 1.6), rr(0.3, 1.1), rr(0.2, 0.6), rr(0.3, 1.0), R() < 0.5 ? CC.wallCol(0.3) : pick(CC.CLOTHS), rr(-0.6, 0.6), R() * 3, rr(-0.6, 0.6), SURF.sheet);
+  put('dome', x, y - 0.2, z, 2.4, 0.9, 1.9, [0.3, 0.24, 0.2]);
+  blockers.push({ x, z, r: 2.0 }); PLACES.refuse = { x, z, y };
+}
 export function buildPlaces() {
-  buildCog(); buildWaterSquare(); buildMarkets(); buildScrimp(); buildStampMills(); buildBones(); buildRefinery(); buildSheriff(); buildWorks(); buildHomesteads(); buildCrater();
+  buildRefuse(); buildCog(); buildWaterSquare(); buildMarkets(); buildScrimp(); buildStampMills(); buildBones(); buildRefinery(); buildSheriff(); buildWorks(); buildHomesteads(); buildCrater();
   // the light the jars throw on the floor under them: one draw of soft green pools
   if (POOLS.length) {
     const quads = POOLS.map(([x, y, z, r]) => [new THREE.PlaneGeometry(r * 2, r * 2).rotateX(-Math.PI / 2), MX(x, y + 0.012, z)]);
-    add(mesh(merge(quads), new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0x2e7a46, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }), { cast: false, receive: false }));
+    add(mesh(merge(quads), new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0x2a6a40, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending }), { cast: false, receive: false }));
   }
+  // strings slung across the aisles
+  if (LINES.length) { const l = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(LINES, 3)), M.wire); l.frustumCulled = false; add(l); }
   // the winding cables of the Bones
   if (CITY.cables) { const pts = []; for (const c of CITY.cables) pts.push(...c); const l = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)), M.wire); l.frustumCulled = false; G.scene.add(l); }
 }

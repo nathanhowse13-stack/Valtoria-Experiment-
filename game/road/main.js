@@ -38,6 +38,7 @@ import { buildDriver } from './driver.js';
 import { buildGate, updateGate, gatePose, gatePassed, GS } from './gate.js';
 import { CITY, buildCity, buildTown, finishCity } from '../city/build.js';
 import { PLACES, buildPlaces, updatePlaces } from '../city/places.js';
+import { FOLK, buildFolk, updateFolk } from '../city/folk.js';
 import { inCity, cityWeight, NORTH, GATE_AT } from '../city/plan.js';
 import { audio, initAudio, sfx, updateAudio, setMuted } from './sound.js';
 import { input, bindInput, pollInput, takeLook, saveSettings, rumble, navFocus, releaseLock } from './input.js';
@@ -910,15 +911,18 @@ function arrive() {
   const caves = Object.keys(S.visited).map(k => CAVES[k] && CAVES[k].def.name).filter(Boolean);
   ui.fxFade.classList.add('on');
   setTimeout(() => {
-    ui.endCard.innerHTML = `<div class="kicker">Bleak Flats</div><h1>Under the wall, at ${esc(clockText())}.</h1>
-      <p class="lede">The massive gate groaned, hydraulic pistons screaming as they lifted the multi-ton slab of ship plating. Jacob kicked the tractor forward, passing under the shadow of the wall and into the belly of the beast.<span class="ws"> ${tagHTML('C', CH2)}</span></p>
-      <p>${S.flags.paid === 'water' ? 'He paid the entry tax in raw water, three ounces of it, and kept his five bits.' : S.flags.paid === 'bits' ? 'He paid the entry tax with his last five bits.' : 'He went in under the wall.'}<span class="ws"> ${tagHTML('X', 'choosing how to pay: ' + NEW)}</span></p>
+    const town = [S.flags.paid === 'water' ? 'Paid the entry tax in raw water, three ounces of it.' : S.flags.paid === 'bits' ? 'Paid the entry tax in bits, five of them.' : 'Got in under the wall.',
+      S.flags.intakeValve ? 'Scrimp’s intake valve in his pocket, three bits lighter.' : 'No valve: Scrimp kept it, for the bunker he hasn’t built.',
+      S.flags.grumm ? 'Grumm left the kitchen door unlatched.' : (S.flags.grummTalk ? 'Sat a while with Grumm.' : 'Didn’t stop at Grumm’s table.')];
+    ui.endCard.innerHTML = `<div class="kicker">The Rusty Cog</div><h1>At the foot of Cogswell’s stairs, at ${esc(clockText())}.</h1>
+      <p class="lede">He paused at the bottom of the staircase. One hand on the railing. He looked back at Grumm in the corner, the broad, scarred shoulders, the tankard cradled in those massive hands. Just for a second. Then he turned and began to climb.<span class="ws"> ${tagHTML('C', CH2)}</span></p>
+      <p>${town.map(esc).join(' ')}<span class="ws"> ${tagHTML('X', 'what he did in town: ' + NEW)}</span></p>
       <ul><li>Health ${Math.round(S.health)}, water ${Math.round(S.water)}, stress ${Math.round(S.stress)}.${S.hull ? ` The hull took ${S.hull} new scratch${S.hull === 1 ? '' : 'es'}.` : ''}</li>
       <li>${S.footKm > 0.05 ? `Walked ${(S.footKm * 1000).toFixed(0)} m of it.` : 'Never left the tractor.'}${caves.length ? ` Went into ${caves.join(', ')}.` : ''}</li>
-      <li>${met.length ? 'Met: ' + met.join(', ') + '.' : 'Met nothing worth mentioning. Lucky.'}</li>
+      <li>${met.length ? 'Met: ' + met.join(', ') + '.' : 'Met nothing worth mentioning on the road. Lucky.'}</li>
       <li>Finds on the road: ${found} of ${FINDS.length}.</li></ul>
-      <p>The city isn’t built yet. Tell Claude what the road did to you, or jot it with N before you go.</p>
-      <div class="actions"><button class="btn primary" id="end-stay">Keep exploring the road</button><button class="btn" id="end-ideas">Read my ideas</button><button class="btn" id="end-morning">Start the morning again</button></div>`;
+      <p>Cogswell’s office is the next chapter. Tell Claude what the road and the town did to you, or jot it with N before you go.</p>
+      <div class="actions"><button class="btn primary" id="end-stay">Keep exploring the town</button><button class="btn" id="end-ideas">Read my ideas</button><button class="btn" id="end-morning">Start the morning again</button></div>`;
     ui.end.hidden = false; ui.fxFade.classList.remove('on'); if (input.mode === 'pad') setTimeout(() => navFocus(ui.end, 'down'), 0);
   }, reduceMotion ? 50 : 1500);
 }
@@ -1001,7 +1005,7 @@ function frame(dt, raw) {
   if (live) {
     S.time += dt * TIME_SCALE; G.time += dt;
     if (S.inTractor) driveTractor(dt); else walk(dt);
-    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); updateGate(dt); updatePlaces(dt, camera.position); }
+    if (inCave()) updateCave(dt); else { updateLife(dt); updateMainRoad(dt); updateGate(dt); updatePlaces(dt, camera.position); updateFolk(dt, camera.position); }
     updateProps(dt); updateRooms(dt);
     hazards(dt); survive(dt);
     if (G.redline > 0) G.redline = Math.max(0, G.redline - dt);
@@ -1072,6 +1076,7 @@ function begin() {
   // (tests, and the title's shortcut: start at the gate, or already through it)
   if (startAt === 'city') { gatePassed(); tractor.x = 0; tractor.z = GATE_AT.z + 18; tractor.yaw = 0; view.lastX = 1e9; S.time = 6 * 3600 + 52 * 60; P.x = tractor.x; P.z = tractor.z; }
   else if (startAt === 'gate') { tractor.x = 0.6; tractor.z = GATE_AT.z - 120; tractor.yaw = 0; view.lastX = 1e9; S.time = 6 * 3600 + 48 * 60; P.x = tractor.x; P.z = tractor.z; }
+  if (startAt) { poseTractor(0); placeCamera(0); }                                              // straight there, before anything on the road notices him
   updateVitals(); canvas.focus();
 }
 let startAt = QS.get('at') || '';
@@ -1092,7 +1097,7 @@ async function boot() {
   jacob = G.jacob = buildJacob(); scene.add(jacob.root);
   buildHands();
   buildProps(); buildRooms(); buildGate(); tick('props');
-  buildCity(); buildPlaces(); buildTown(); finishCity(); tick('city'); buildDetail(); tick('detail');
+  buildCity(); buildPlaces(); buildTown(); buildFolk(); finishCity(); tick('city'); buildDetail(); tick('detail');
   for (const l of W.leaks) waterThing({ id: 'leak' + Math.round(l.z), name: l.name || 'Pipeline leak', x: l.x, z: l.z, r: 2.2, line: l.line || 'Pipeline water. Tastes of rust and somebody else’s taxes. It’s wet.', prov: ['X', 'the old water pipeline: ' + NEW] });
   for (const w of W.water || []) waterThing({ ...w, y: w.y, r: 1.6 });
   tractor.x = 0; tractor.z = 8; P.x = tractor.x; P.z = tractor.z; view.lastX = 0; view.lastZ = 8;
@@ -1139,4 +1144,4 @@ ui.btnWs.addEventListener('click', () => setWorkshop(!S.workshop));
 ui.menuClose.addEventListener('click', closeMenu);
 addEventListener('pagehide', stopVoice);
 boot();
-if (DEBUG) window.__road = { THREE, HANDS, playHand, GS, CITY, PLACES, inCity, cityWeight, gatePassed, get driver() { return driver; }, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };
+if (DEBUG) window.__road = { THREE, HANDS, playHand, GS, CITY, PLACES, FOLK, inCity, cityWeight, gatePassed, get driver() { return driver; }, S, P, W, G, CAVES, STRIDERS, SWARM, things, camera, h, nearestRoad, enterCave, use, begin, sulphur, input, post, perf, view, airState, propState, surfaceAt, blocked, quality: applyQuality, primary: () => primaryAction(camera), get tractor() { return tractor; }, get target() { return target; }, get jacob() { return jacob; } };

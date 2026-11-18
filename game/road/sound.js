@@ -135,6 +135,7 @@ export const sfx = {
   squeal: (s = HERE) => { tone({ type: 'sawtooth', f: 820, f2: 1500, dur: 0.38, gain: 0.045 * s.gain, lp: 3200, vib: 70, pan: s.pan }); noiseHit({ f: 2400, q: 1.5, dur: 0.2, gain: 0.04 * s.gain, pan: s.pan }); },
   // the town: the stamp-mills' ore-crushers dropping, THOOM; a piano nobody's tuned in a generation
   stamp: (s = HERE, n = 1) => { const g = Math.min(1.6, 0.7 + 0.3 * n) * s.gain; tone({ f: 55, f2: 31, dur: 0.5, gain: 0.32 * g, pan: s.pan }); noiseHit({ type: 'lowpass', f: 240, dur: 0.22, gain: 0.34 * g, pan: s.pan }); noiseHit({ type: 'bandpass', f: 1700, q: 2.5, dur: 0.06, gain: 0.07 * g, pan: s.pan }); },
+  scritch: (s = HERE) => { for (let i = 0; i < 3; i++) noiseHit({ type: 'bandpass', f: 3800 + Math.random() * 1800, q: 3, dur: 0.07, gain: 0.05 * s.gain, delay: i * 0.09, pan: s.pan }); },   // wire bristles on a steel back
   plink: (s = HERE) => { for (const [f, d] of [[261.6, 0], [266.2, 0], [523.1, 0.004], [329.6, 0.12], [333.9, 0.12]]) tone({ type: 'triangle', f, dur: 1.8, gain: 0.035 * s.gain, attack: 0.003, delay: d, pan: s.pan }); },
   skitter: (s = HERE) => { for (let i = 0; i < 5; i++) noiseHit({ f: 3400 + Math.random() * 600, q: 5, dur: 0.02, gain: 0.07 * s.gain, delay: i * 0.034, pan: s.pan }); },
 };

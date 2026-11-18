@@ -57,7 +57,7 @@ export function stopVoice() {
   if (voice.duck) voice.duck(false);
 }
 // role: 'jacob' (his thoughts), 'book' (the Book of Lost Echoes), 'whisper' (the flies), 'radio' (a voice out of the tractor's set, on the road),
-// 'ironshell' (the guard at the gate of Bleak Flats)
+// 'ironshell' (the guard at the gate of Bleak Flats); and the town's: 'suini', 'ratkin', 'steamforged', 'chitin', 'lupari'
 export function speak(text, role = 'jacob', { muted = false, onEnd = null } = {}) {
   if (!voice.ok || !voice.settings.on || muted) return false;
   const say = speakable(text);
@@ -71,6 +71,12 @@ export function speak(text, role = 'jacob', { muted = false, onEnd = null } = {}
   else if (role === 'whisper') { u.rate = 0.82; u.pitch = 0.55; u.volume = voice.settings.vol * 0.32; }
   else if (role === 'radio') { u.rate = 1.06; u.pitch = 1.12; u.volume = voice.settings.vol * 0.5; }
   else if (role === 'ironshell') { u.rate = 0.8; u.pitch = 0.1; u.volume = voice.settings.vol * 0.9; }     // gravel down a metal chute (Chapter Two)
+  // the town's people (Chapter Two): a suini's rumble from the bottom of a well, a rat-kin's chatter, a steamforged's synthesiser, a chitin-born's clicks, a lupari's growl
+  else if (role === 'suini') { u.rate = 0.84; u.pitch = 0.25; u.volume = voice.settings.vol * 0.9; }
+  else if (role === 'ratkin') { u.rate = 1.3; u.pitch = 1.8; u.volume = voice.settings.vol * 0.75; }
+  else if (role === 'steamforged') { u.rate = 0.92; u.pitch = 0.45; u.volume = voice.settings.vol * 0.8; }
+  else if (role === 'chitin') { u.rate = 1.18; u.pitch = 1.35; u.volume = voice.settings.vol * 0.75; }
+  else if (role === 'lupari') { u.rate = 0.9; u.pitch = 0.35; u.volume = voice.settings.vol * 0.85; }
   else { u.rate = natural ? 1.02 : 0.98; u.pitch = natural ? 0.94 : 0.86; u.volume = voice.settings.vol; }
   const finish = () => {
     if (token !== voice.token) return;

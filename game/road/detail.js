@@ -19,6 +19,7 @@
 import { THREE, G, W, M, SWAY, shades } from './core.js';
 import { h, HALF_W, nearestRoad, saltAt, inCanyon, landBlocked, PITS, TALLY } from './land.js';
 import { scaleU } from './air.js';
+import { inCity } from '../city/plan.js';
 import { POSTU, POST_GLSL, HAZEU } from '../shared/post.js';
 
 // ---------- the ground's shader ----------
@@ -322,6 +323,7 @@ function fillCell(ci, cj, L) {
   const x0 = ci * CELL, z0 = cj * CELL;
   if (z0 < -70 || z0 > 1880 || Math.abs(x0 + CELL / 2) > HALF_W - 6) return lists;
   const R = seedOf(ci, cj), cx = x0 + CELL / 2, cz = z0 + CELL / 2;
+  if (inCity(cx, cz, -3)) return lists;                                                       // the town's streets are swept by feet, not strewn with stones
   const nr = nearestRoad(cx, cz, 1), roadNear = nr.d < CELL * 0.75 + 6;
   const town = Math.hypot(cx - TALLY.x, cz - TALLY.z) < 70, outskirts = cz > 1250 && cz < 1800;
   let pit = false; for (const p of PITS) if (Math.hypot(cx - p.x, cz - p.z) < p.r + 4) pit = true;

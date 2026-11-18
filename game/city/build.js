@@ -30,7 +30,7 @@ const R = CITY.rand, pick = (a) => a[Math.floor(R() * a.length)], rr = (a, b) =>
 const pickW = (list) => { let t = 0; for (const [, w] of list) t += w; let r = R() * t; for (const [v, w] of list) { if ((r -= w) <= 0) return v; } return list[0][0]; };
 
 // ---------- the pieces: boxes, cylinders, domes, all instanced ----------
-const PIECES = { box: [], cyl: [], dome: [], dark: [], lit: [], cloth: [] };
+const PIECES = { box: [], cyl: [], dome: [], dark: [], lit: [], glow: [], cloth: [] };
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3(), _d = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 // what a box is made of, for the shader: plain sheet, corrugated iron, a shipping container, planks, plaster
 export const SURF = { sheet: 0, corr: 1, box: 2, plank: 3, plaster: 4 };
@@ -51,6 +51,7 @@ function rod(ax, ay, az, bx, by, bz, r, col, kind = 'cyl') {
 const RUSTS = [[0.62, 0.36, 0.26], [0.5, 0.27, 0.19], [0.7, 0.44, 0.3], [0.42, 0.25, 0.2], [0.34, 0.3, 0.28]];
 const PAINTS = [[0.56, 0.2, 0.14], [0.74, 0.56, 0.22], [0.28, 0.5, 0.47], [0.4, 0.52, 0.66], [0.62, 0.62, 0.6], [0.3, 0.42, 0.26], [0.78, 0.74, 0.68]];
 const CLOTHS = [[0.6, 0.22, 0.16], [0.72, 0.58, 0.36], [0.5, 0.5, 0.48], [0.3, 0.4, 0.5], [0.66, 0.42, 0.2], [0.42, 0.34, 0.26]];
+const BRIGHT = [[0.72, 0.18, 0.1], [0.86, 0.6, 0.2], [0.2, 0.4, 0.62], [0.5, 0.6, 0.3], [0.82, 0.42, 0.16], [0.56, 0.26, 0.42], [0.84, 0.8, 0.7], [0.3, 0.55, 0.52]];   // market awnings, dyed and not yet faded
 const PALE = [[0.86, 0.8, 0.7], [0.8, 0.72, 0.6], [0.9, 0.86, 0.8], [0.74, 0.7, 0.66]];
 const WOODS = [[0.46, 0.34, 0.24], [0.4, 0.3, 0.22], [0.52, 0.4, 0.3], [0.36, 0.27, 0.2]];
 const wallCol = (paint = 0.3) => { const c = R() < paint ? pick(PAINTS) : pick(RUSTS), v = rr(0.8, 1.15); return [c[0] * v, c[1] * v, c[2] * v]; };
@@ -420,7 +421,7 @@ function buildCables() {
 }
 // the jars: a point of green-white light each, and a little glass round it
 function buildLamps() {
-  for (const l of CITY.lamps) { put('lit', l.x, l.y, l.z, 0.17, 0.24, 0.17, FUNGUS); if (!l.hung) put('cyl', l.x, l.y + 0.2, l.z, 0.02, 0.2, 0.02, RUSTS[4]); }
+  for (const l of CITY.lamps) { put('glow', l.x, l.y, l.z, 0.17, 0.24, 0.17, FUNGUS); put('cyl', l.x, l.y + 0.13, l.z, 0.2, 0.04, 0.2, RUSTS[3]); if (!l.hung) put('cyl', l.x, l.y + 0.25, l.z, 0.02, 0.2, 0.02, RUSTS[4]); }
 }
 // shop signs: one sheet of painted boards, one draw
 function buildSigns() {
@@ -435,19 +436,20 @@ function buildSigns() {
   });
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const pos = [], uv = [], idx = [];
-  CITY.signs.forEach((s, k) => {
-    const i = SIGNS.indexOf(s.text), u0 = (i % cols) / cols, v1 = 1 - Math.floor(i / cols) / rows, u1 = u0 + 1 / cols, v0 = v1 - 1 / rows, hw = s.w / 2, hh = s.w * ch / cw / 2, b = k * 4;
+  CITY.signs.forEach((s) => {
+    const i = SIGNS.indexOf(s.text), u0 = (i % cols) / cols, v1 = 1 - Math.floor(i / cols) / rows, u1 = u0 + 1 / cols, v0 = v1 - 1 / rows, hw = s.w / 2, hh = s.w * ch / cw / 2;
     if (s.blade) {
       // hung out from the wall on its bracket: square to the street, readable from up and down it
-      const xs = [s.x + s.s * hw, s.x - s.s * hw];
-      pos.push(xs[0], s.y - hh, s.z, xs[1], s.y - hh, s.z, xs[0], s.y + hh, s.z, xs[1], s.y + hh, s.z);
+      // (two faces a hair apart, each the right way round from its own side)
+      for (const e of [1, -1]) { const xa = s.x + e * hw, xb = s.x - e * hw, zz = s.z - e * 0.025; pos.push(xa, s.y - hh, zz, xb, s.y - hh, zz, xa, s.y + hh, zz, xb, s.y + hh, zz); }
       put('cyl', s.x, s.y + hh + 0.12, s.z, 0.03, s.w + 0.3, 0.03, RUSTS[3], 0, 0, Math.PI / 2);
     } else {
       // facing the street: the west side's signs face east (−x), the east side's face west
       const zs = s.s > 0 ? [-hw, hw] : [hw, -hw];
       pos.push(s.x, s.y - hh, s.z + zs[0], s.x, s.y - hh, s.z + zs[1], s.x, s.y + hh, s.z + zs[0], s.x, s.y + hh, s.z + zs[1]);
     }
-    uv.push(u0, v0, u1, v0, u0, v1, u1, v1); idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+    const n = pos.length / 3 - (s.blade ? 8 : 4);
+    for (let q = n; q < pos.length / 3; q += 4) { uv.push(u0, v0, u1, v0, u0, v1, u1, v1); idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
   });
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide })); m.receiveShadow = true; CITY.root.add(m);
@@ -468,6 +470,7 @@ export function finishCity() {
   instance(new THREE.SphereGeometry(1, 16, 8, 0, TAU, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), PIECES.dome);
   instance(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), PIECES.dark, { cast: false });
   instance(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }), PIECES.lit, { cast: false, receive: false });
+  instance(new THREE.CylinderGeometry(0.5, 0.46, 1, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }), PIECES.glow, { cast: false, receive: false });
   instance(new THREE.BoxGeometry(1, 1, 1), cloth, PIECES.cloth);
   // stovepipes and vents: smoke from the fires under them, steam from the boilers
   // (indoors the sky's light is turned down on all of these: places.js)
@@ -477,7 +480,7 @@ export function finishCity() {
   for (const k in PIECES) CITY['n' + k] = PIECES[k].length;
 }
 export const STEAM = { color: new THREE.Color(0.62, 0.62, 0.62), opacity: 0.3 };
-export const cityPut = put, cityRod = rod, cityAs = as, cityPick = pick, cityRand = R, cityRR = rr, CITY_COLOURS = { RUSTS, PAINTS, CLOTHS, PALE, WOODS, DARK, AMBER, FUNGUS, wallCol, woodCol };
+export const cityPut = put, cityRod = rod, cityAs = as, cityPick = pick, cityRand = R, cityRR = rr, CITY_COLOURS = { RUSTS, PAINTS, CLOTHS, BRIGHT, PALE, WOODS, DARK, AMBER, FUNGUS, wallCol, woodCol };
 
 export function buildCity() {
   CITY.root = new THREE.Group(); G.scene.add(CITY.root);
