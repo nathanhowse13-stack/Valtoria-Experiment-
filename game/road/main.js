@@ -1030,7 +1030,7 @@ function frame(dt, raw) {
   for (const r of RELICS) if (r.m.visible) r.m.rotation.y += dt * 1.5;
   if (CITY.root) CITY.root.visible = camera.position.z > 1380;                                  // the town, when it's near enough to see
   // indoors (the Cog), the eyes open up to the gloom, as they did in the caves; the sky's light doesn't reach in
-  if (G.area === 'out') G.exposureTarget = 1.05 + 0.6 * (G.indoor || 0);
+  if (G.area === 'out') G.exposureTarget = 1.05 + 0.75 * (G.indoor || 0);
   // what's near enough to hear: worked out a few times a second, not every frame
   if ((amb.t -= raw) <= 0) {
     amb.t = 0.2; const p = here(); cullFar();

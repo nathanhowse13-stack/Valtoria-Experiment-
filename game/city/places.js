@@ -128,6 +128,7 @@ function buildCog() {
   // the shell: an ancient steel cylinder on its side, a third of it sunk in the ground, the door cut through the street side
   const tile = 2.4;
   const outer = mat({ map: T.iron.c, normalMap: T.iron.n, color: 0xc8957a, roughness: 0.78, metalness: 0.5 });
+  outer.shadowSide = THREE.DoubleSide;                                                                        // the near wall's shadow, not the far wall's: the sun stays out
   const inner = mat({ map: T.iron.c, normalMap: T.iron.n, color: 0x4e3e36, roughness: 0.94, metalness: 0.2, side: THREE.BackSide });   // soot and a century of smoke
   const g = add(new THREE.Group()); g.position.set(cx, y + AXY, cz);
   const piece = (za, zb, t0, tl) => {
@@ -517,7 +518,7 @@ function buildStampMills() {
   // the ore: a bin behind fed down a chute; the crushed stuff red as the ground, heaped where it comes out
   put('box', s.x + 3.9, y + 4.6, s.z, 2.4, 3.2, Lz - 2, CC.RUSTS[1], 0, 0, 0, SURF.sheet); for (const e of [-1, 1]) for (const zz of [-4, 0, 4]) put('box', s.x + 3.9 + e * 1.0, y + 1.5, s.z + zz, 0.25, 3.0, 0.25, CC.RUSTS[4], 0, 0, 0, SURF.sheet);
   put('box', s.x + 2.2, y + 3.5, s.z, 1.6, 0.1, Lz - 3, CC.RUSTS[3], 0, 0, 0.55, SURF.sheet);
-  put('dome', s.x - 4.6, y - 0.4, s.z + 1, 2.6, 1.9, 5.2, [0.56, 0.3, 0.2]); put('dome', s.x - 4.2, y - 0.3, s.z - 5, 1.8, 1.1, 2.4, [0.6, 0.34, 0.24]);
+  put('dome', s.x - 4.6, y - 0.4, s.z + 1, 2.6, 1.9, 5.2, [0.4, 0.18, 0.11]); put('dome', s.x - 4.2, y - 0.3, s.z - 5, 1.8, 1.1, 2.4, [0.44, 0.21, 0.13]);
   blockers.push({ x0: s.x - 1.2, x1: s.x + 5.2, z0: s.z - Lz / 2, z1: s.z + Lz / 2 }, { x: s.x - 4.6, z: s.z + 1, r: 2.4 });
   addThing({ id: 'stamps', name: 'The stamp-mills', verb: 'Look', x: s.x - 3.2, y: y + 1.5, z: s.z - 4, r: 3.4, prov: C2, use: () => bark('The old stamp-mills. Iron feet lifted on the cams and dropped on the ore, one after another, all day. THOOM. THOOM. THOOM. The heartbeat of the district. Half the second battery is hung up and nobody’s mending it.', C2) });
 }
@@ -680,7 +681,7 @@ function buildWorks() {
     if (!free(x - w / 2 - 1, z - d / 2 - 1, x + w / 2 + 1, z + d / 2 + 1)) continue;
     const y = h(x, z); take(x - w / 2, z - d / 2, x + w / 2, z + d / 2);
     if (q < 0.4) { const hh = lerp(3, 5, R2()); put('box', x, y + hh / 2, z, w, hh, d, CC.wallCol(0.2)); put('box', x, y + hh + 0.06, z, w + 0.4, 0.08, d + 0.4, [0.46, 0.38, 0.32], 0, 0, 0.08); put(R2() < 0.15 ? 'lit' : 'dark', x + w / 2 + 0.02, y + 1.4, z, 0.06, 2.8, 2.4, R2() < 0.5 ? CC.DARK : CC.AMBER.map(v => v * 0.4)); blockers.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 }); }
-    else if (q < 0.62) { put('dome', x, y - 0.3, z, w / 2, lerp(1, 2.6, R2()), d / 2, R2() < 0.5 ? [0.56, 0.3, 0.2] : [0.2, 0.18, 0.17]); blockers.push({ x, z, r: w * 0.42 }); }   // spoil, or slag
+    else if (q < 0.62) { put('dome', x, y - 0.3, z, w / 2, lerp(1, 2.6, R2()), d / 2, R2() < 0.5 ? [0.4, 0.18, 0.11] : [0.16, 0.14, 0.13]); blockers.push({ x, z, r: w * 0.42 }); }   // spoil, or slag
     else if (q < 0.82) { for (let i = 0; i < 7; i++) put('cyl', x + (R2() - 0.5) * w, y + 0.5, z + (R2() - 0.5) * d, 0.62, 1.0, 0.62, R2() < 0.5 ? CC.RUSTS[1] : pick(CC.PAINTS)); blockers.push({ x, z, r: w * 0.45 }); }   // drums
     else if (q < 0.9) { put('cyl', x, y + 7.6, z, 3.2, 2.8, 3.2, CC.RUSTS[1]); for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) put('cyl', x + u * 1.2, y + 3.1, z + v * 1.2, 0.18, 6.2, 0.18, CC.RUSTS[4]); blockers.push({ x, z, r: 1.6 }); }   // a water tower
     else { for (let i = 0; i < 9; i++) put('box', x + (R2() - 0.5) * w, y + R2() * 1.2, z + (R2() - 0.5) * d, lerp(0.5, 2.2, R2()), lerp(0.3, 1.2, R2()), lerp(0.5, 2.4, R2()), CC.wallCol(0.2), R2() - 0.5, R2() * 3, R2() - 0.5); blockers.push({ x, z, r: w * 0.45 }); }   // a scrap heap

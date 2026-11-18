@@ -254,7 +254,7 @@ function scenes(cam) {
     say('A chitin-born', 'Fresh! Fresh meat! Dug this morning! No parasites! Only protein!', C2, 'chitin', 4200);
     setTimeout(() => say('A rat-kin', 'Lies! Lies! Smells like sulphur! Smells like sickness!', C2, 'ratkin', 4200), 4400);
   }
-  if (near(FOLK.scenes.hedge, 9) && !S.flags.l_unit7) { S.flags.l_unit7 = true; once('hedges', 'A line of steamforged backing into the hedges, groaning like grinding metal. Scritch-scratch-scritch. Scrubbing off the rust-rot.', C2); setTimeout(unit7, 4500); }
+  if (near(FOLK.scenes.hedge, 9) && !(G.indoor > 0.3) && !S.flags.l_unit7) { S.flags.l_unit7 = true; once('hedges', 'A line of steamforged backing into the hedges, groaning like grinding metal. Scritch-scratch-scritch. Scrubbing off the rust-rot.', C2); setTimeout(unit7, 4500); }
   if (near(FOLK.scenes.trough, 7)) once('wolfguard', 'Wolf-Guard at the trough. Cogswell’s mutts. They stop drinking to watch me go by. Neither of them blinks.', C2);
   if (FOLK.scrimp && near(FOLK.scrimp, 9) && !S.flags.l_scrimp) { S.flags.l_scrimp = true; say('Scrimp', 'Jacob! Jacob! You look… pale. Paler. Sun is eating you, yes?', C2, 'ratkin'); }
 }
